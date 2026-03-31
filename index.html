@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Pavement Radio</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, system-ui, sans-serif;
+    background: #111;
+    color: #e0e0e0;
+    min-height: 100dvh;
+    padding: 16px;
+    padding-bottom: 120px;
+  }
+  h1 { font-size: 20px; margin-bottom: 4px; color: #fff; }
+  .subtitle { font-size: 12px; color: #777; margin-bottom: 16px; }
+  .status-bar {
+    background: #1a1a1a;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .status-bar .label { color: #888; }
+  .status-bar .value { color: #fff; font-variant-numeric: tabular-nums; }
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .dot-inactive { background: #555; }
+  .dot-searching { background: #f0ad4e; animation: pulse 1s infinite; }
+  .dot-active { background: #5cb85c; }
+  .dot-error { background: #d9534f; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  button {
+    flex: 1;
+    padding: 14px 12px;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  button:active { opacity: 0.7; }
+  button:disabled { opacity: 0.35; cursor: default; }
+  .btn-start { background: #5cb85c; color: #fff; }
+  .btn-start.active { background: #d9534f; }
+  .btn-drop { background: #337ab7; color: #fff; }
+
+  .section-title {
+    font-size: 13px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .waypoint-list { margin-bottom: 16px; }
+  .waypoint {
+    background: #1a1a1a;
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .waypoint.triggered {
+    background: #1a2a1a;
+    border: 1px solid #5cb85c44;
+  }
+  .wp-info { flex: 1; }
+  .wp-name { font-size: 14px; font-weight: 600; color: #fff; }
+  .wp-coords { font-size: 11px; color: #777; margin-top: 2px; }
+  .wp-distance {
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    margin: 0 12px;
+    min-width: 70px;
+    text-align: right;
+  }
+  .wp-distance.near { color: #5cb85c; }
+  .wp-distance.far { color: #888; }
+  .wp-delete {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 20px;
+    padding: 4px 8px;
+    cursor: pointer;
+    flex: none;
+  }
+  .wp-delete:active { color: #d9534f; }
+
+  .log {
+    background: #0a0a0a;
+    border-radius: 10px;
+    padding: 12px;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    max-height: 200px;
+    overflow-y: auto;
+    color: #666;
+  }
+  .log .entry-trigger { color: #5cb85c; }
+  .log .entry-exit { color: #f0ad4e; }
+  .log .entry-error { color: #d9534f; }
+
+  .empty-state {
+    text-align: center;
+    color: #555;
+    padding: 24px;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Pavement Radio</h1>
+<p class="subtitle">prototype — drop waypoints, walk into them, hear ghosts</p>
+
+<div class="status-bar" id="status">
+  <span class="status-dot dot-inactive"></span>
+  <span class="label">GPS:</span> <span class="value">inactive</span>
+</div>
+
+<div class="buttons">
+  <button class="btn-start" id="btnStart" onclick="toggleTracking()">Start Tracking</button>
+  <button class="btn-drop" id="btnDrop" onclick="dropWaypoint()" disabled>Drop Waypoint</button>
+</div>
+
+<div class="section-title">Waypoints</div>
+<div class="waypoint-list" id="waypointList">
+  <div class="empty-state">No waypoints yet. Start tracking and drop one.</div>
+</div>
+
+<div class="section-title">Log</div>
+<div class="log" id="log"></div>
+
+<script>
+const TRIGGER_RADIUS = 30;
+const EXIT_RADIUS = 45;
+const SAMPLE_RATE = 44100;
+const WAV_DURATION = 5;
+
+let tracking = false;
+let watchId = null;
+let currentPos = null;
+let gpsStatus = 'inactive';
+let waypoints = [];
+let logEntries = [];
+let carrierAudio = null;
+let toneAudio = null;
+let triggerFadeInterval = null;
+let waypointCounter = 0;
+
+// --- WAV generation ---
+
+function generateWAV(fillSample) {
+  const numSamples = SAMPLE_RATE * WAV_DURATION;
+  const buffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(buffer);
+
+  function writeStr(offset, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  }
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, SAMPLE_RATE, true);
+  view.setUint32(28, SAMPLE_RATE * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+
+  for (let i = 0; i < numSamples; i++) {
+    view.setInt16(44 + i * 2, fillSample(i), true);
+  }
+
+  return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+}
+
+function silentSample() { return 1; }
+
+function toneSample(i) {
+  return Math.sin(2 * Math.PI * 440 * i / SAMPLE_RATE) * 0.3 * 32767;
+}
+
+// --- Audio engine ---
+
+function createAudioElement(src) {
+  const el = new Audio(src);
+  el.loop = true;
+  el.preload = 'auto';
+  return el;
+}
+
+function startAudio() {
+  const silentUrl = generateWAV(silentSample);
+  const toneUrl = generateWAV(toneSample);
+
+  carrierAudio = createAudioElement(silentUrl);
+  carrierAudio.volume = 1;
+
+  toneAudio = createAudioElement(toneUrl);
+  toneAudio.volume = 0;
+
+  carrierAudio.play().catch(e => log('Audio carrier error: ' + e.message, 'error'));
+  toneAudio.play().catch(e => log('Audio tone error: ' + e.message, 'error'));
+}
+
+function stopAudio() {
+  if (carrierAudio) { carrierAudio.pause(); carrierAudio = null; }
+  if (toneAudio) { toneAudio.pause(); toneAudio = null; }
+  if (triggerFadeInterval) { clearInterval(triggerFadeInterval); triggerFadeInterval = null; }
+}
+
+function fadeTone(targetVol, duration) {
+  if (!toneAudio) return;
+  if (triggerFadeInterval) clearInterval(triggerFadeInterval);
+  const startVol = toneAudio.volume;
+  const steps = 20;
+  const stepTime = duration / steps;
+  const stepSize = (targetVol - startVol) / steps;
+  let step = 0;
+  triggerFadeInterval = setInterval(() => {
+    step++;
+    toneAudio.volume = Math.max(0, Math.min(1, startVol + stepSize * step));
+    if (step >= steps) {
+      toneAudio.volume = targetVol;
+      clearInterval(triggerFadeInterval);
+      triggerFadeInterval = null;
+    }
+  }, stepTime);
+}
+
+// --- GPS ---
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function onPosition(pos) {
+  currentPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy };
+  gpsStatus = 'active';
+  checkProximity();
+  render();
+}
+
+function onPositionError(err) {
+  gpsStatus = 'error';
+  log('GPS error: ' + err.message, 'error');
+  render();
+}
+
+function checkProximity() {
+  if (!currentPos) return;
+  let anyTriggered = false;
+
+  for (const wp of waypoints) {
+    const dist = haversine(currentPos.lat, currentPos.lon, wp.lat, wp.lon);
+    wp.distance = dist;
+
+    if (dist <= TRIGGER_RADIUS && !wp.triggered) {
+      wp.triggered = true;
+      log('Entered "' + wp.name + '" (' + Math.round(dist) + 'm)', 'trigger');
+    } else if (dist > EXIT_RADIUS && wp.triggered) {
+      wp.triggered = false;
+      log('Exited "' + wp.name + '"', 'exit');
+    }
+
+    if (wp.triggered) anyTriggered = true;
+  }
+
+  const currentToneVol = toneAudio ? toneAudio.volume : 0;
+  if (anyTriggered && currentToneVol < 0.5) {
+    fadeTone(1, 500);
+  } else if (!anyTriggered && currentToneVol > 0.5) {
+    fadeTone(0, 500);
+  }
+}
+
+// --- Waypoints ---
+
+function loadWaypoints() {
+  try {
+    const data = localStorage.getItem('pr-waypoints');
+    if (data) {
+      waypoints = JSON.parse(data);
+      waypointCounter = waypoints.reduce((max, wp) => {
+        const n = parseInt(wp.name.replace('Waypoint ', ''), 10);
+        return isNaN(n) ? max : Math.max(max, n);
+      }, 0);
+    }
+  } catch (e) { waypoints = []; }
+  waypoints.forEach(wp => { wp.triggered = false; wp.distance = null; });
+}
+
+function saveWaypoints() {
+  localStorage.setItem('pr-waypoints', JSON.stringify(waypoints.map(wp => ({
+    id: wp.id, name: wp.name, lat: wp.lat, lon: wp.lon, createdAt: wp.createdAt
+  }))));
+}
+
+function dropWaypoint() {
+  if (!currentPos) return;
+  waypointCounter++;
+  const wp = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: 'Waypoint ' + waypointCounter,
+    lat: currentPos.lat,
+    lon: currentPos.lon,
+    createdAt: new Date().toISOString(),
+    triggered: false,
+    distance: 0
+  };
+  waypoints.push(wp);
+  saveWaypoints();
+  log('Dropped "' + wp.name + '" at ' + wp.lat.toFixed(5) + ', ' + wp.lon.toFixed(5));
+  render();
+}
+
+function deleteWaypoint(id) {
+  waypoints = waypoints.filter(wp => wp.id !== id);
+  saveWaypoints();
+  checkProximity();
+  render();
+}
+
+// --- Tracking ---
+
+function toggleTracking() {
+  if (!tracking) {
+    if (!navigator.geolocation) {
+      log('Geolocation not supported', 'error');
+      return;
+    }
+    gpsStatus = 'searching';
+    startAudio();
+    watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 30000
+    });
+    tracking = true;
+    log('Tracking started');
+  } else {
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    stopAudio();
+    tracking = false;
+    gpsStatus = 'inactive';
+    waypoints.forEach(wp => wp.triggered = false);
+    log('Tracking stopped');
+  }
+  render();
+}
+
+// --- Visibility recovery ---
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && tracking) {
+    if (carrierAudio && carrierAudio.paused) carrierAudio.play().catch(() => {});
+    if (toneAudio && toneAudio.paused) toneAudio.play().catch(() => {});
+  }
+});
+
+// --- Log ---
+
+function log(msg, type) {
+  const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  logEntries.unshift({ time, msg, type: type || 'info' });
+  if (logEntries.length > 50) logEntries.length = 50;
+  renderLog();
+}
+
+// --- Render ---
+
+function render() {
+  // Status bar
+  const statusEl = document.getElementById('status');
+  const dotClass = { inactive: 'dot-inactive', searching: 'dot-searching', active: 'dot-active', error: 'dot-error' }[gpsStatus];
+  let statusText = gpsStatus;
+  if (gpsStatus === 'active' && currentPos) {
+    statusText = currentPos.lat.toFixed(5) + ', ' + currentPos.lon.toFixed(5) +
+      '  &nbsp; <span class="label">acc:</span> <span class="value">' + Math.round(currentPos.acc) + 'm</span>';
+  }
+  statusEl.innerHTML = '<span class="status-dot ' + dotClass + '"></span>' +
+    '<span class="label">GPS:</span> <span class="value">' + statusText + '</span>';
+
+  // Buttons
+  const btnStart = document.getElementById('btnStart');
+  btnStart.textContent = tracking ? 'Stop Tracking' : 'Start Tracking';
+  btnStart.className = 'btn-start' + (tracking ? ' active' : '');
+  document.getElementById('btnDrop').disabled = !tracking || !currentPos;
+
+  // Waypoints
+  const listEl = document.getElementById('waypointList');
+  if (waypoints.length === 0) {
+    listEl.innerHTML = '<div class="empty-state">No waypoints yet. Start tracking and drop one.</div>';
+  } else {
+    listEl.innerHTML = waypoints.map(wp => {
+      const distStr = wp.distance !== null ? Math.round(wp.distance) + 'm' : '—';
+      const nearClass = wp.distance !== null && wp.distance <= TRIGGER_RADIUS ? 'near' : 'far';
+      const triggeredClass = wp.triggered ? ' triggered' : '';
+      return '<div class="waypoint' + triggeredClass + '">' +
+        '<div class="wp-info">' +
+          '<div class="wp-name">' + wp.name + (wp.triggered ? ' — playing' : '') + '</div>' +
+          '<div class="wp-coords">' + wp.lat.toFixed(5) + ', ' + wp.lon.toFixed(5) + '</div>' +
+        '</div>' +
+        '<div class="wp-distance ' + nearClass + '">' + distStr + '</div>' +
+        '<button class="wp-delete" onclick="deleteWaypoint(\'' + wp.id + '\')">&times;</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  renderLog();
+}
+
+function renderLog() {
+  const logEl = document.getElementById('log');
+  logEl.innerHTML = logEntries.map(e => {
+    const cls = e.type !== 'info' ? ' class="entry-' + e.type + '"' : '';
+    return '<div' + cls + '>' + e.time + ' ' + e.msg + '</div>';
+  }).join('');
+}
+
+// --- Init ---
+loadWaypoints();
+render();
+</script>
+</body>
+</html>
