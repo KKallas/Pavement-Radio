@@ -2,184 +2,551 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<title>Pavement Radio</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pavement Radio — Player</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, system-ui, sans-serif;
-    background: #111;
-    color: #e0e0e0;
-    min-height: 100dvh;
-    padding: 16px;
-    padding-bottom: 120px;
-  }
-  h1 { font-size: 20px; margin-bottom: 4px; color: #fff; }
-  .subtitle { font-size: 12px; color: #777; margin-bottom: 16px; }
-  .status-bar {
-    background: #1a1a1a;
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 12px;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-  .status-bar .label { color: #888; }
-  .status-bar .value { color: #fff; font-variant-numeric: tabular-nums; }
-  .status-dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    margin-right: 6px;
-    vertical-align: middle;
-  }
-  .dot-inactive { background: #555; }
-  .dot-searching { background: #f0ad4e; animation: pulse 1s infinite; }
-  .dot-active { background: #5cb85c; }
-  .dot-error { background: #d9534f; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-
-  .buttons {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 16px;
-  }
-  button {
-    flex: 1;
-    padding: 14px 12px;
-    border: none;
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-  button:active { opacity: 0.7; }
-  button:disabled { opacity: 0.35; cursor: default; }
-  .btn-start { background: #5cb85c; color: #fff; }
-  .btn-start.active { background: #d9534f; }
-  .btn-drop { background: #337ab7; color: #fff; }
-
-  .section-title {
-    font-size: 13px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-  }
-  .waypoint-list { margin-bottom: 16px; }
-  .waypoint {
-    background: #1a1a1a;
-    border-radius: 10px;
-    padding: 12px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .waypoint.triggered {
-    background: #1a2a1a;
-    border: 1px solid #5cb85c44;
-  }
-  .wp-info { flex: 1; }
-  .wp-name { font-size: 14px; font-weight: 600; color: #fff; }
-  .wp-coords { font-size: 11px; color: #777; margin-top: 2px; }
-  .wp-distance {
-    font-size: 18px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    margin: 0 12px;
-    min-width: 70px;
-    text-align: right;
-  }
-  .wp-distance.near { color: #5cb85c; }
-  .wp-distance.far { color: #888; }
-  .wp-delete {
-    background: none;
-    border: none;
-    color: #555;
-    font-size: 20px;
-    padding: 4px 8px;
-    cursor: pointer;
-    flex: none;
-  }
-  .wp-delete:active { color: #d9534f; }
-
-  .log {
-    background: #0a0a0a;
-    border-radius: 10px;
-    padding: 12px;
-    font-family: 'SF Mono', 'Menlo', monospace;
-    font-size: 11px;
-    line-height: 1.5;
-    max-height: 200px;
-    overflow-y: auto;
-    color: #666;
-  }
-  .log .entry-trigger { color: #5cb85c; }
-  .log .entry-exit { color: #f0ad4e; }
-  .log .entry-error { color: #d9534f; }
-
-  .empty-state {
-    text-align: center;
-    color: #555;
-    padding: 24px;
-    font-size: 13px;
-  }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh;display:flex;flex-direction:column;padding-bottom:64px}
+nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:60px;background:#1a1a1a;border-top:1px solid #333;display:flex;z-index:9999;padding-bottom:env(safe-area-inset-bottom,0)}
+nav.bottom-nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#666;font-size:10px;gap:2px;transition:color .15s}
+nav.bottom-nav a.active{color:#5cb85c}
+nav.bottom-nav a:active{opacity:.6}
+nav.bottom-nav svg{width:22px;height:22px;fill:currentColor}
+header{padding:16px;border-bottom:1px solid #333}
+header h1{font-size:1.3em}
+header .subtitle{color:#888;font-size:.8em}
+.toolbar{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid #222;flex-wrap:wrap;align-items:center}
+button{min-height:44px;min-width:44px;padding:10px 20px;border:none;border-radius:6px;font-size:.95em;cursor:pointer;font-weight:600}
+.btn-green{background:#5cb85c;color:#fff}
+.btn-blue{background:#337ab7;color:#fff}
+.btn-amber{background:#f0ad4e;color:#111}
+.btn-red{background:#d9534f;color:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+input[type="file"]{display:none}
+.tour-banner{background:#1a1a1a;border-radius:8px;padding:16px;margin:12px 16px;display:none}
+.tour-banner h2{font-size:1.1em;color:#5cb85c;margin-bottom:8px}
+.tour-meta{font-size:.8em;color:#888;margin-bottom:4px}
+.tour-meta span{margin-right:12px}
+.contributors{font-size:.75em;color:#666;margin-top:6px}
+.contributors strong{color:#888}
+#main{flex:1;padding:16px;overflow-y:auto}
+.waypoint-list{list-style:none}
+.waypoint-list li{background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+.wp-indicator{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.wp-indicator.unvisited{background:#333}
+.wp-indicator.active{background:#f0ad4e;box-shadow:0 0 8px #f0ad4e}
+.wp-indicator.visited{background:#5cb85c}
+.wp-name{flex:1;font-size:.95em}
+.wp-dist{font-size:.8em;color:#888;min-width:60px;text-align:right}
+.wp-requires{font-size:.7em;color:#f0ad4e;margin-top:2px}
+#gps-status{padding:8px 16px;font-size:.8em;color:#888;border-top:1px solid #222}
+.status-bar{display:flex;align-items:center;gap:8px}
+.gps-dot{width:8px;height:8px;border-radius:50%;background:#d9534f}
+.gps-dot.active{background:#5cb85c}
+#log-panel{background:#0a0a0a;border-top:1px solid #333;max-height:200px;overflow-y:auto;font-family:"SF Mono",Monaco,Consolas,monospace;font-size:.75em;color:#666;padding:8px 16px;display:none}
+nav{padding:12px 16px;border-top:1px solid #333}
+nav a{color:#337ab7;text-decoration:none;margin-right:16px;font-size:.9em;display:inline-block;min-height:44px;line-height:44px}
 </style>
 </head>
 <body>
 
+<header>
 <h1>Pavement Radio</h1>
-<p class="subtitle">prototype — drop waypoints, walk into them, hear ghosts</p>
+<p class="subtitle">Player</p>
+</header>
 
-<div class="status-bar" id="status">
-  <span class="status-dot dot-inactive"></span>
-  <span class="label">GPS:</span> <span class="value">inactive</span>
+<div class="toolbar">
+<button class="btn-blue" onclick="document.getElementById('tour-file').click()">Load Tour</button>
+<input type="file" id="tour-file" accept=".pr,.zip" onchange="loadTourFile(event)">
+<button class="btn-green" id="btn-start" disabled onclick="startTour()">Start</button>
+<button class="btn-amber" id="btn-stop" style="display:none" onclick="stopTour()">Stop</button>
+<button style="background:#222;color:#888;font-size:.8em" onclick="toggleLog()">Log</button>
 </div>
 
-<div class="buttons">
-  <button class="btn-start" id="btnStart" onclick="toggleTracking()">Start Tracking</button>
-  <button class="btn-drop" id="btnDrop" onclick="dropWaypoint()" disabled>Drop Waypoint</button>
+<div class="tour-banner" id="tour-banner">
+<h2 id="tour-title"></h2>
+<div class="tour-meta">
+<span id="tour-wp-count"></span>
+<span id="tour-author"></span>
+</div>
+<div class="tour-meta">
+<span id="tour-pubkey" style="font-family:monospace;font-size:.85em"></span>
+</div>
+<div class="contributors" id="tour-contributors"></div>
 </div>
 
-<div class="section-title">Waypoints</div>
-<div class="waypoint-list" id="waypointList">
-  <div class="empty-state">No waypoints yet. Start tracking and drop one.</div>
+<div id="main">
+<p style="color:#666;text-align:center;margin-top:40px" id="empty-msg">Load a .pr tour file to begin.</p>
+<ul class="waypoint-list" id="waypoint-list"></ul>
 </div>
 
-<div class="section-title">Log</div>
-<div class="log" id="log"></div>
+<div id="gps-status">
+<div class="status-bar">
+<div class="gps-dot" id="gps-dot"></div>
+<span id="gps-text">GPS inactive</span>
+</div>
+</div>
 
+<div id="log-panel"></div>
+
+<!-- Silent audio carrier to keep page alive when phone is locked -->
+<audio id="silent-carrier" loop></audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
-const TRIGGER_RADIUS = 30;
-const EXIT_RADIUS = 45;
-const SAMPLE_RATE = 44100;
-const WAV_DURATION = 5;
+// --- Identity redirect ---
+(function() {
+  if (!localStorage.getItem('pr-identity')) {
+    window.location.href = '/identity';
+  }
+})();
 
-let tracking = false;
+// --- State ---
+let tour = null;
+let waypoints = [];
+let session = { visited: [], path: [] };
 let watchId = null;
 let currentPos = null;
-let gpsStatus = 'inactive';
-let waypoints = [];
-let logEntries = [];
-let carrierAudio = null;
-let toneAudio = null;
-let triggerFadeInterval = null;
-let waypointCounter = 0;
+let audioCtx = null;
+let currentSources = [];
 
-// --- WAV generation ---
+const DB_NAME = 'pr-player-audio';
+const DB_VERSION = 1;
+const STORE = 'blobs';
 
-function generateWAV(fillSample) {
-  const numSamples = SAMPLE_RATE * WAV_DURATION;
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function storeBlob(key, blob) {
+  const db = await openDB();
+  const tx = db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).put(blob, key);
+  return new Promise((r, e) => { tx.oncomplete = r; tx.onerror = () => e(tx.error); });
+}
+
+async function loadBlob(key) {
+  const db = await openDB();
+  const tx = db.transaction(STORE, 'readonly');
+  const req = tx.objectStore(STORE).get(key);
+  return new Promise((r, e) => { tx.oncomplete = () => r(req.result); tx.onerror = () => e(tx.error); });
+}
+
+async function clearBlobs() {
+  const db = await openDB();
+  const tx = db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).clear();
+  return new Promise((r, e) => { tx.oncomplete = r; tx.onerror = () => e(tx.error); });
+}
+
+// --- Logging ---
+function log(msg) {
+  const panel = document.getElementById('log-panel');
+  const ts = new Date().toLocaleTimeString();
+  panel.innerHTML += '<div>[' + ts + '] ' + msg + '</div>';
+  panel.scrollTop = panel.scrollHeight;
+  console.log('[PR]', msg);
+}
+
+function toggleLog() {
+  const panel = document.getElementById('log-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+// --- Parse cartridge.py ---
+function extractPythonValue(text, varName) {
+  // Find the variable assignment
+  const pattern = new RegExp('(?:^|\\n)' + varName + '\\s*=\\s*');
+  const match = pattern.exec(text);
+  if (!match) return null;
+
+  let start = match.index + match[0].length;
+  const firstChar = text[start];
+
+  // String value (quoted)
+  if (firstChar === '"' || firstChar === "'") {
+    // Check for triple-quote
+    const triple = text.substring(start, start + 3);
+    if (triple === '"""' || triple === "'''") {
+      const endQuote = text.indexOf(triple, start + 3);
+      if (endQuote === -1) return null;
+      return text.substring(start + 3, endQuote);
+    }
+    // Single-line string
+    let end = start + 1;
+    while (end < text.length && text[end] !== firstChar) {
+      if (text[end] === '\\') end++; // skip escaped chars
+      end++;
+    }
+    return text.substring(start + 1, end);
+  }
+
+  // Number
+  if (/[\d\-.]/.test(firstChar)) {
+    const numMatch = text.substring(start).match(/^[\d.\-eE]+/);
+    if (numMatch) return parseFloat(numMatch[0]);
+  }
+
+  // True/False/None
+  if (text.substring(start, start + 4) === 'True') return true;
+  if (text.substring(start, start + 5) === 'False') return false;
+  if (text.substring(start, start + 4) === 'None') return null;
+
+  // Brace-counted: dict or list
+  if (firstChar === '{' || firstChar === '[') {
+    const openBrace = firstChar;
+    const closeBrace = firstChar === '{' ? '}' : ']';
+    let depth = 0;
+    let i = start;
+    let inString = false;
+    let stringChar = null;
+
+    while (i < text.length) {
+      const c = text[i];
+      if (inString) {
+        if (c === '\\') { i++; }
+        else if (c === stringChar) { inString = false; }
+      } else {
+        if (c === '"' || c === "'") { inString = true; stringChar = c; }
+        else if (c === openBrace || (openBrace === '{' && c === '[') || (openBrace === '[' && c === '{')) {
+          if (c === openBrace) depth++;
+          else { /* nested other type */ depth++; }
+        } else if (c === closeBrace || (closeBrace === '}' && c === ']') || (closeBrace === ']' && c === '}')) {
+          if (c === closeBrace) depth--;
+          else depth--;
+          if (depth === 0) {
+            const raw = text.substring(start, i + 1);
+            // Convert Python to JSON
+            let json = raw
+              .replace(/True/g, 'true')
+              .replace(/False/g, 'false')
+              .replace(/None/g, 'null')
+              .replace(/'/g, '"')
+              .replace(/,\s*([\]}])/g, '$1') // trailing commas
+              .replace(/#[^\n]*/g, '');       // comments
+            try { return JSON.parse(json); } catch(e) { log('Parse error for ' + varName + ': ' + e.message); return null; }
+          }
+        }
+      }
+      i++;
+    }
+    return null;
+  }
+
+  return null;
+}
+
+// More robust brace-counting parser
+function extractPythonValueRobust(text, varName) {
+  const pattern = new RegExp('(?:^|\\n)' + varName + '\\s*=\\s*', 'g');
+  const match = pattern.exec(text);
+  if (!match) return null;
+
+  let start = match.index + match[0].length;
+  const firstChar = text[start];
+
+  if (firstChar === '"' || firstChar === "'") {
+    return extractPythonValue(text, varName);
+  }
+  if (firstChar !== '{' && firstChar !== '[') {
+    return extractPythonValue(text, varName);
+  }
+
+  // Brace-counting with proper tracking
+  let depth = 0;
+  let i = start;
+  let inStr = false;
+  let strChar = '';
+  const openers = new Set(['{', '[', '(']);
+  const closers = new Set(['}', ']', ')']);
+
+  while (i < text.length) {
+    const c = text[i];
+    if (inStr) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === strChar) { inStr = false; }
+    } else {
+      if (c === '#') { while (i < text.length && text[i] !== '\n') i++; continue; }
+      if (c === '"' || c === "'") { inStr = true; strChar = c; }
+      else if (openers.has(c)) depth++;
+      else if (closers.has(c)) {
+        depth--;
+        if (depth === 0) {
+          const raw = text.substring(start, i + 1);
+          let json = raw
+            .replace(/#[^\n]*/g, '')
+            .replace(/True/g, 'true')
+            .replace(/False/g, 'false')
+            .replace(/None/g, 'null')
+            .replace(/'/g, '"')
+            .replace(/,\s*([\]})]])/g, '$1');
+          try { return JSON.parse(json); } catch(e) { log('Parse error: ' + e.message); return null; }
+        }
+      }
+    }
+    i++;
+  }
+  return null;
+}
+
+// --- Load Tour ---
+async function loadTourFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  log('Loading tour: ' + file.name);
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const cartridgeFile = zip.file('cartridge.py');
+    if (!cartridgeFile) { log('ERROR: No cartridge.py found in archive'); return; }
+
+    const cartridgeText = await cartridgeFile.async('text');
+    log('Parsing cartridge.py...');
+
+    tour = extractPythonValueRobust(cartridgeText, 'TOUR');
+    waypoints = extractPythonValueRobust(cartridgeText, 'WAYPOINTS') || [];
+    const author = extractPythonValue(cartridgeText, 'AUTHOR');
+    const pubkey = extractPythonValue(cartridgeText, 'PUBKEY');
+    const contributors = extractPythonValueRobust(cartridgeText, 'CONTRIBUTORS');
+
+    if (!tour) { log('ERROR: Could not parse TOUR from cartridge.py'); return; }
+    log('Tour: ' + tour.title + ' (' + waypoints.length + ' waypoints)');
+
+    // Load audio blobs into IndexedDB
+    await clearBlobs();
+    let audioCount = 0;
+    for (const entry of Object.entries(zip.files)) {
+      const [path, zipEntry] = entry;
+      if (zipEntry.dir) continue;
+      // Match audio files in track directories
+      if (/\.(opus|mp3|wav|ogg|m4a|webm)$/i.test(path)) {
+        const blob = await zipEntry.async('blob');
+        await storeBlob(path, blob);
+        audioCount++;
+      }
+    }
+    log('Loaded ' + audioCount + ' audio files into IndexedDB');
+
+    // Restore session
+    const savedSession = localStorage.getItem('pr-session-' + tour.id);
+    if (savedSession) {
+      const parsed = JSON.parse(savedSession);
+      session.visited = parsed.visited || [];
+      session.path = parsed.path || [];
+      log('Restored session: ' + session.visited.length + ' waypoints visited');
+    } else {
+      session.visited = [];
+      session.path = [];
+    }
+
+    // Display banner
+    document.getElementById('tour-banner').style.display = 'block';
+    document.getElementById('tour-title').textContent = tour.title || 'Untitled Tour';
+    document.getElementById('tour-wp-count').textContent = waypoints.length + ' waypoints';
+    document.getElementById('tour-author').textContent = author ? 'by ' + author : '';
+    document.getElementById('tour-pubkey').textContent = pubkey ? pubkey.substring(0, 20) + '...' : '';
+
+    if (contributors && Array.isArray(contributors) && contributors.length > 0) {
+      document.getElementById('tour-contributors').innerHTML =
+        '<strong>Contributors:</strong> ' + contributors.join(', ');
+    } else {
+      document.getElementById('tour-contributors').textContent = '';
+    }
+
+    // Render waypoint list
+    renderWaypoints();
+
+    // Enable start button
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('empty-msg').style.display = 'none';
+
+  } catch (e) {
+    log('ERROR loading tour: ' + e.message);
+    console.error(e);
+  }
+  event.target.value = '';
+}
+
+function renderWaypoints() {
+  const list = document.getElementById('waypoint-list');
+  list.innerHTML = '';
+  waypoints.forEach((wp, i) => {
+    const li = document.createElement('li');
+    const visited = session.visited.includes(wp.id);
+    li.innerHTML = `
+      <div class="wp-indicator ${visited ? 'visited' : 'unvisited'}" id="wp-ind-${i}"></div>
+      <div style="flex:1">
+        <div class="wp-name">${wp.name || wp.id}</div>
+        ${wp.requires && wp.requires.length ? '<div class="wp-requires">Requires: ' + wp.requires.join(', ') + '</div>' : ''}
+      </div>
+      <div class="wp-dist" id="wp-dist-${i}">--</div>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function saveSession() {
+  if (!tour) return;
+  localStorage.setItem('pr-session-' + tour.id, JSON.stringify({
+    visited: session.visited,
+    path: session.path
+  }));
+}
+
+// --- GPS ---
+function startTour() {
+  if (!tour) return;
+  log('Starting tour...');
+  initSilentCarrier();
+
+  document.getElementById('btn-start').style.display = 'none';
+  document.getElementById('btn-stop').style.display = '';
+
+  if (!navigator.geolocation) {
+    log('ERROR: Geolocation not available');
+    return;
+  }
+
+  watchId = navigator.geolocation.watchPosition(
+    onPosition,
+    (err) => {
+      log('GPS error: ' + err.message);
+      document.getElementById('gps-dot').className = 'gps-dot';
+      document.getElementById('gps-text').textContent = 'GPS error: ' + err.message;
+    },
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+  );
+  document.getElementById('gps-dot').className = 'gps-dot active';
+  document.getElementById('gps-text').textContent = 'Acquiring GPS...';
+}
+
+function stopTour() {
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  stopAllAudio();
+  document.getElementById('btn-start').style.display = '';
+  document.getElementById('btn-stop').style.display = 'none';
+  document.getElementById('gps-dot').className = 'gps-dot';
+  document.getElementById('gps-text').textContent = 'GPS inactive';
+  log('Tour stopped.');
+}
+
+function haversineM(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toRad) * Math.cos(lat2*toRad) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function onPosition(pos) {
+  currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+  document.getElementById('gps-text').textContent =
+    `${currentPos.lat.toFixed(5)}, ${currentPos.lng.toFixed(5)} (±${Math.round(currentPos.acc)}m)`;
+
+  waypoints.forEach((wp, i) => {
+    if (!wp.trigger || !wp.trigger.coords) return;
+    const dist = haversineM(currentPos.lat, currentPos.lng, wp.trigger.coords[0], wp.trigger.coords[1]);
+    const distEl = document.getElementById('wp-dist-' + i);
+    if (distEl) distEl.textContent = dist < 1000 ? Math.round(dist) + 'm' : (dist/1000).toFixed(1) + 'km';
+
+    const radius = wp.trigger.radius_m || 20;
+    const indEl = document.getElementById('wp-ind-' + i);
+
+    if (dist <= radius && !session.visited.includes(wp.id)) {
+      // Waypoint triggered
+      log('TRIGGERED: ' + (wp.name || wp.id) + ' (dist: ' + Math.round(dist) + 'm)');
+      if (indEl) indEl.className = 'wp-indicator active';
+      triggerWaypoint(wp, i);
+    } else if (dist <= radius && indEl && !indEl.classList.contains('active')) {
+      // Already visited, within range
+    }
+  });
+}
+
+async function triggerWaypoint(wp, index) {
+  // Check prerequisites
+  const requires = wp.requires || [];
+  const allMet = requires.every(id => session.visited.includes(id));
+  const useSameAudio = wp.same_audio !== false;
+
+  let tracks;
+  if (useSameAudio || allMet) {
+    tracks = wp.tracks_on || {};
+    log('Playing on-track audio for: ' + (wp.name || wp.id));
+  } else {
+    tracks = wp.tracks_off || {};
+    log('Prerequisites not met for: ' + (wp.name || wp.id) + ' — playing off-track');
+    const missing = requires.filter(id => !session.visited.includes(id));
+    log('Missing: ' + missing.join(', '));
+  }
+
+  // Mark as visited
+  session.visited.push(wp.id);
+  session.path.push(wp.id);
+  saveSession();
+
+  // Update indicator
+  const indEl = document.getElementById('wp-ind-' + index);
+  if (indEl) indEl.className = 'wp-indicator visited';
+
+  // Play audio (currently only ATMO)
+  await playTracks(tracks);
+}
+
+async function playTracks(tracks) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  for (const [trackType, path] of Object.entries(tracks)) {
+    if (!path) continue;
+
+    if (trackType === 'atmo') {
+      try {
+        const blob = await loadBlob(path);
+        if (!blob) { log('Audio not found in DB: ' + path); continue; }
+        const arrayBuffer = await blob.arrayBuffer();
+        const buffer = await audioCtx.decodeAudioData(arrayBuffer);
+        stopAllAudio();
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+        source.loop = true;
+        source.start();
+        currentSources.push(source);
+        log('Playing ATMO: ' + path);
+      } catch (e) {
+        log('Error playing ATMO: ' + e.message);
+      }
+    } else {
+      log(trackType.toUpperCase() + ' track: ' + path + ' (not yet implemented)');
+    }
+  }
+}
+
+function stopAllAudio() {
+  currentSources.forEach(s => { try { s.stop(); } catch(e) {} });
+  currentSources = [];
+}
+
+// --- Silent WAV carrier ---
+function initSilentCarrier() {
+  // Generate a tiny silent WAV to keep the audio session alive
+  const sampleRate = 8000;
+  const duration = 1; // 1 second
+  const numSamples = sampleRate * duration;
   const buffer = new ArrayBuffer(44 + numSamples * 2);
   const view = new DataView(buffer);
 
-  function writeStr(offset, str) {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  }
-
+  // WAV header
+  const writeStr = (offset, str) => { for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); };
   writeStr(0, 'RIFF');
   view.setUint32(4, 36 + numSamples * 2, true);
   writeStr(8, 'WAVE');
@@ -187,274 +554,27 @@ function generateWAV(fillSample) {
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, 1, true);
-  view.setUint32(24, SAMPLE_RATE, true);
-  view.setUint32(28, SAMPLE_RATE * 2, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
   view.setUint16(32, 2, true);
   view.setUint16(34, 16, true);
   writeStr(36, 'data');
   view.setUint32(40, numSamples * 2, true);
+  // Samples are all zero (silent)
 
-  for (let i = 0; i < numSamples; i++) {
-    view.setInt16(44 + i * 2, fillSample(i), true);
-  }
-
-  return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+  const blob = new Blob([buffer], { type: 'audio/wav' });
+  const url = URL.createObjectURL(blob);
+  const carrier = document.getElementById('silent-carrier');
+  carrier.src = url;
+  carrier.volume = 0.01;
+  carrier.play().catch(() => {});
 }
-
-function silentSample() { return 1; }
-
-function toneSample(i) {
-  return Math.sin(2 * Math.PI * 440 * i / SAMPLE_RATE) * 0.3 * 32767;
-}
-
-// --- Audio engine ---
-
-function createAudioElement(src) {
-  const el = new Audio(src);
-  el.loop = true;
-  el.preload = 'auto';
-  return el;
-}
-
-function startAudio() {
-  const silentUrl = generateWAV(silentSample);
-  const toneUrl = generateWAV(toneSample);
-
-  carrierAudio = createAudioElement(silentUrl);
-  carrierAudio.volume = 1;
-
-  toneAudio = createAudioElement(toneUrl);
-  toneAudio.volume = 0;
-
-  carrierAudio.play().catch(e => log('Audio carrier error: ' + e.message, 'error'));
-  toneAudio.play().catch(e => log('Audio tone error: ' + e.message, 'error'));
-}
-
-function stopAudio() {
-  if (carrierAudio) { carrierAudio.pause(); carrierAudio = null; }
-  if (toneAudio) { toneAudio.pause(); toneAudio = null; }
-  if (triggerFadeInterval) { clearInterval(triggerFadeInterval); triggerFadeInterval = null; }
-}
-
-function fadeTone(targetVol, duration) {
-  if (!toneAudio) return;
-  if (triggerFadeInterval) clearInterval(triggerFadeInterval);
-  const startVol = toneAudio.volume;
-  const steps = 20;
-  const stepTime = duration / steps;
-  const stepSize = (targetVol - startVol) / steps;
-  let step = 0;
-  triggerFadeInterval = setInterval(() => {
-    step++;
-    toneAudio.volume = Math.max(0, Math.min(1, startVol + stepSize * step));
-    if (step >= steps) {
-      toneAudio.volume = targetVol;
-      clearInterval(triggerFadeInterval);
-      triggerFadeInterval = null;
-    }
-  }, stepTime);
-}
-
-// --- GPS ---
-
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function onPosition(pos) {
-  currentPos = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy };
-  gpsStatus = 'active';
-  checkProximity();
-  render();
-}
-
-function onPositionError(err) {
-  gpsStatus = 'error';
-  log('GPS error: ' + err.message, 'error');
-  render();
-}
-
-function checkProximity() {
-  if (!currentPos) return;
-  let anyTriggered = false;
-
-  for (const wp of waypoints) {
-    const dist = haversine(currentPos.lat, currentPos.lon, wp.lat, wp.lon);
-    wp.distance = dist;
-
-    if (dist <= TRIGGER_RADIUS && !wp.triggered) {
-      wp.triggered = true;
-      log('Entered "' + wp.name + '" (' + Math.round(dist) + 'm)', 'trigger');
-    } else if (dist > EXIT_RADIUS && wp.triggered) {
-      wp.triggered = false;
-      log('Exited "' + wp.name + '"', 'exit');
-    }
-
-    if (wp.triggered) anyTriggered = true;
-  }
-
-  const currentToneVol = toneAudio ? toneAudio.volume : 0;
-  if (anyTriggered && currentToneVol < 0.5) {
-    fadeTone(1, 500);
-  } else if (!anyTriggered && currentToneVol > 0.5) {
-    fadeTone(0, 500);
-  }
-}
-
-// --- Waypoints ---
-
-function loadWaypoints() {
-  try {
-    const data = localStorage.getItem('pr-waypoints');
-    if (data) {
-      waypoints = JSON.parse(data);
-      waypointCounter = waypoints.reduce((max, wp) => {
-        const n = parseInt(wp.name.replace('Waypoint ', ''), 10);
-        return isNaN(n) ? max : Math.max(max, n);
-      }, 0);
-    }
-  } catch (e) { waypoints = []; }
-  waypoints.forEach(wp => { wp.triggered = false; wp.distance = null; });
-}
-
-function saveWaypoints() {
-  localStorage.setItem('pr-waypoints', JSON.stringify(waypoints.map(wp => ({
-    id: wp.id, name: wp.name, lat: wp.lat, lon: wp.lon, createdAt: wp.createdAt
-  }))));
-}
-
-function dropWaypoint() {
-  if (!currentPos) return;
-  waypointCounter++;
-  const wp = {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-    name: 'Waypoint ' + waypointCounter,
-    lat: currentPos.lat,
-    lon: currentPos.lon,
-    createdAt: new Date().toISOString(),
-    triggered: false,
-    distance: 0
-  };
-  waypoints.push(wp);
-  saveWaypoints();
-  log('Dropped "' + wp.name + '" at ' + wp.lat.toFixed(5) + ', ' + wp.lon.toFixed(5));
-  render();
-}
-
-function deleteWaypoint(id) {
-  waypoints = waypoints.filter(wp => wp.id !== id);
-  saveWaypoints();
-  checkProximity();
-  render();
-}
-
-// --- Tracking ---
-
-function toggleTracking() {
-  if (!tracking) {
-    if (!navigator.geolocation) {
-      log('Geolocation not supported', 'error');
-      return;
-    }
-    gpsStatus = 'searching';
-    startAudio();
-    watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 30000
-    });
-    tracking = true;
-    log('Tracking started');
-  } else {
-    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-    stopAudio();
-    tracking = false;
-    gpsStatus = 'inactive';
-    waypoints.forEach(wp => wp.triggered = false);
-    log('Tracking stopped');
-  }
-  render();
-}
-
-// --- Visibility recovery ---
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && tracking) {
-    if (carrierAudio && carrierAudio.paused) carrierAudio.play().catch(() => {});
-    if (toneAudio && toneAudio.paused) toneAudio.play().catch(() => {});
-  }
-});
-
-// --- Log ---
-
-function log(msg, type) {
-  const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  logEntries.unshift({ time, msg, type: type || 'info' });
-  if (logEntries.length > 50) logEntries.length = 50;
-  renderLog();
-}
-
-// --- Render ---
-
-function render() {
-  // Status bar
-  const statusEl = document.getElementById('status');
-  const dotClass = { inactive: 'dot-inactive', searching: 'dot-searching', active: 'dot-active', error: 'dot-error' }[gpsStatus];
-  let statusText = gpsStatus;
-  if (gpsStatus === 'active' && currentPos) {
-    statusText = currentPos.lat.toFixed(5) + ', ' + currentPos.lon.toFixed(5) +
-      '  &nbsp; <span class="label">acc:</span> <span class="value">' + Math.round(currentPos.acc) + 'm</span>';
-  }
-  statusEl.innerHTML = '<span class="status-dot ' + dotClass + '"></span>' +
-    '<span class="label">GPS:</span> <span class="value">' + statusText + '</span>';
-
-  // Buttons
-  const btnStart = document.getElementById('btnStart');
-  btnStart.textContent = tracking ? 'Stop Tracking' : 'Start Tracking';
-  btnStart.className = 'btn-start' + (tracking ? ' active' : '');
-  document.getElementById('btnDrop').disabled = !tracking || !currentPos;
-
-  // Waypoints
-  const listEl = document.getElementById('waypointList');
-  if (waypoints.length === 0) {
-    listEl.innerHTML = '<div class="empty-state">No waypoints yet. Start tracking and drop one.</div>';
-  } else {
-    listEl.innerHTML = waypoints.map(wp => {
-      const distStr = wp.distance !== null ? Math.round(wp.distance) + 'm' : '—';
-      const nearClass = wp.distance !== null && wp.distance <= TRIGGER_RADIUS ? 'near' : 'far';
-      const triggeredClass = wp.triggered ? ' triggered' : '';
-      return '<div class="waypoint' + triggeredClass + '">' +
-        '<div class="wp-info">' +
-          '<div class="wp-name">' + wp.name + (wp.triggered ? ' — playing' : '') + '</div>' +
-          '<div class="wp-coords">' + wp.lat.toFixed(5) + ', ' + wp.lon.toFixed(5) + '</div>' +
-        '</div>' +
-        '<div class="wp-distance ' + nearClass + '">' + distStr + '</div>' +
-        '<button class="wp-delete" onclick="deleteWaypoint(\'' + wp.id + '\')">&times;</button>' +
-      '</div>';
-    }).join('');
-  }
-
-  renderLog();
-}
-
-function renderLog() {
-  const logEl = document.getElementById('log');
-  logEl.innerHTML = logEntries.map(e => {
-    const cls = e.type !== 'info' ? ' class="entry-' + e.type + '"' : '';
-    return '<div' + cls + '>' + e.time + ' ' + e.msg + '</div>';
-  }).join('');
-}
-
-// --- Init ---
-loadWaypoints();
-render();
 </script>
+<nav class="bottom-nav">
+  <a href="/" class="active"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Player</a>
+  <a href="/editor"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Editor</a>
+  <a href="/recorder"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zm-5 9a1 1 0 01-1-1h2a1 1 0 01-1 1zm-1 0v2h2v-2h-2z"/></svg>Recorder</a>
+  <a href="/identity"><svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Identity</a>
+</nav>
 </body>
 </html>

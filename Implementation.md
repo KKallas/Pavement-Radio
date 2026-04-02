@@ -9,21 +9,19 @@
 
 These words mean specific things. Use them consistently or the system becomes ambiguous.
 
-**Waypoint** — a physical trigger point in space. Exactly one trigger type: GPS coordinate with a radius, QR code ID, or ESP32 ID. One waypoint, one trigger. No combinations at the waypoint level — complexity lives in the event.
+**Waypoint** — a physical trigger point in space and the unit of story authoring. Exactly one trigger type: GPS coordinate with a radius, QR code ID, or ESP32 ID. One waypoint, one trigger. Each waypoint carries its own audio composition (four tracks), an optional list of prerequisite waypoints, and two audio sets: one for when prerequisites are met (on-track) and one for when they are not (off-track). The waypoint is what the author writes.
 
-**Event** — the unit of story authoring. A directed arc from one waypoint to another. The walker is always inside exactly one event. Events are linear: a start waypoint, an end waypoint, a composition, a pre-render script. This is what the author writes.
+**Prerequisites** — the list of waypoint IDs that must be visited before this waypoint plays its on-track audio. If the walker arrives without having visited all prerequisites, the off-track audio plays instead — typically a narrator redirecting them to the right place. Prerequisites replace the old event/arc model. The author defines order through prerequisites, not through directed connections.
 
-**Session** — the accumulated state of one walker's run through a tour. Contains two things: a **tag accumulator** (unordered set of string tags) and a **path log** (append-only ordered array of visited waypoint IDs). Lives in localStorage. The pre-render pipeline reads this.
+**Session** — the accumulated state of one walker's run through a tour. Contains a **visited set** (which waypoint IDs the walker has triggered) and a **path log** (append-only ordered array of visited waypoint IDs). Lives in localStorage. The pre-render pipeline reads this.
 
-**Tag** — a string emitted by a waypoint on visit, or by a puzzle resolution, or by dwell time thresholds. Tags are the session's memory. Branch logic reads tags. Pre-render scripts read tags. Tags do not expire.
+**Path log** — the ordered visit history. The full log enables retroactive narrative — a late waypoint can reference what the walker experienced first.
 
-**Path log** — the ordered visit history. The last two entries are the direction vector: where the walker came from determines where to push them next. The full log enables retroactive narrative — a late event can reference what the walker saw first.
+**Composition** — the audio content of one waypoint. Always four tracks (see below). Each waypoint has two compositions: **on-track** (prerequisites met) and **off-track** (prerequisites not met). The author can check "same audio" to use one composition for both states.
 
-**Composition** — the audio content of one event. Always four tracks (see below). This is what plays between two waypoints.
+**Pre-render** — a Python script that runs when the walker is approaching a waypoint, using session state to personalise the composition audio before arrival. Produces warm files. Never runs live.
 
-**Pre-render** — a Python script that runs when the walker is one event away from a waypoint, using session state to personalise the composition audio before arrival. Produces warm files. Never runs live.
-
-**Prefetch radius** — 100 metres. When any waypoint comes within this radius, its event's pre-render fires speculatively. All plausible next events warm simultaneously. The walker never waits.
+**Prefetch radius** — 100 metres. When any waypoint comes within this radius, its pre-render fires speculatively. All plausible nearby waypoints warm simultaneously. The walker never waits.
 
 **Cartridge** — the complete tour definition file. A plain Python file (`cartridge.py`). Human-readable and hand-editable. The authoring tool exports this. The player loads and executes this inside a sandbox. Authors can write it directly in any text editor — the GUI is a convenience, not a requirement. Running `python cartridge.py` directly self-verifies the package. An unsigned cartridge does not run, anywhere, ever.
 
@@ -35,20 +33,20 @@ These words mean specific things. Use them consistently or the system becomes am
 session: {
   tour_id: string,
   skin: string,                      // which narrative skin is active
-  tags: Set<string>,                 // unordered, append-only
+  visited: Set<waypoint_id>,         // which waypoints have been triggered
   path: [waypoint_id, ...],          // ordered visit history
-  current_event: event_id | null,
-  warm_events: [event_id, ...]       // pre-rendered, ready to play
+  current_waypoint: waypoint_id | null,
+  warm_waypoints: [waypoint_id, ...] // pre-rendered, ready to play
 }
 ```
 
-Branch decisions read `tags` for who this walker is and `path[-2:]` for which direction they came from. That pair is sufficient for all routing logic.
+When a walker triggers a waypoint, the player checks `visited` against the waypoint's `requires` list. If all prerequisites are in `visited`, the on-track composition plays. If not, the off-track composition plays. Either way, the waypoint ID is added to `visited` and appended to `path`.
 
 ---
 
 ## The Four-Track Audio Model
 
-Every composition has exactly four tracks. They mix independently. When events overlap at a waypoint — because the walker moved fast, or doubled back — tracks mix per-channel, not per-event. This is also the localisation boundary: swap the VO track for a different language, everything else stays identical.
+Every composition has exactly four tracks. They mix independently. When compositions overlap — because the walker moved fast between waypoints, or doubled back — tracks mix per-channel, not per-waypoint. This is also the localisation boundary: swap the VO track for a different language, everything else stays identical.
 
 **ATMO** — continuous ambient soundscape. Fades slowly. When a new event starts, its ATMO crossfades into the previous event's ATMO (or the global tour atmo if no previous event). Never cuts hard. The city always sounds like somewhere.
 
@@ -58,8 +56,8 @@ Every composition has exactly four tracks. They mix independently. When events o
 
 **VO** — the narrator voice. Outside the fiction, addressing the walker directly. The Terry Pratchett footnote voice. This is the track most likely to be personalised by the pre-render script, because it knows the walker's session state and speaks to them specifically.
 
-Track mixing rules for overlapping events:
-- ATMO: crossfade, longer event wins
+Track mixing rules for overlapping waypoints:
+- ATMO: crossfade, longer composition wins
 - SFX: both play, user hears layered foley
 - DIALOGUE: queue, do not overlap — finish current line before next
 - VO: queue, do not overlap — VO is never interrupted
@@ -68,72 +66,87 @@ Track mixing rules for overlapping events:
 
 ## Cartridge Schema (working draft)
 
-```yaml
-tour:
-  id: string
-  title: string
-  skin: string                       # narrative frame label
-  global_atmo: audio_asset_ref       # plays under everything, always
+The cartridge is a Python file (`cartridge.py`) with the tour definition as Python dicts/lists. No YAML. The schema below shows the structure:
 
-waypoints:
-  - id: string
-    trigger:
-      type: gps | qr | esp
-      coords: [lat, lng]             # if gps
-      radius_m: number               # if gps, default 20m
-      qr_id: string                  # if qr
-      esp_id: string                 # if esp
-      esp_hack_level: number         # if esp, 0 = normal connect, 1+ = bypass tricks
-    emits: [tag, ...]                # tags written to session on visit
+```python
+TOUR = {
+    "id": "string",
+    "title": "string",
+    "skin": "string",                      # narrative frame label
+    "global_atmo": "audio_asset_ref"       # plays under everything, always
+}
 
-events:
-  - id: string
-    from_waypoint: waypoint_id
-    to_waypoint: waypoint_id
-    requires: [tag, ...]             # session must contain all these to play full composition
-    fallback_event: event_id | null  # plays instead if requires not met
+WAYPOINTS = [
+    {
+        "id": "string",
+        "name": "string",
+        "trigger": {
+            "type": "gps | qr | esp",
+            "coords": [lat, lng],          # if gps
+            "radius_m": 20,                # if gps, default 20m
+            "qr_id": "string",            # if qr
+            "esp_id": "string",            # if esp
+        },
+        "requires": ["waypoint_id", ...],  # must visit these first for on-track audio
+        "same_audio": True,                # if True, on-track plays in both states
 
-    composition:
-      atmo:
-        asset: audio_asset_ref
-        fade_in_s: number
-        fade_out_s: number
-      sfx:
-        - asset: audio_asset_ref
-          cue_s: number              # seconds from event start
-      dialogue:
-        - asset: audio_asset_ref
-          cue_s: number
-          character: string
-      vo:
-        asset: audio_asset_ref | null         # static fallback
-        prompt_template: string | null        # if pre-render is used
-        prompt_variables: [session_field, ...] # what session fields to inject
+        # on-track: plays when all prerequisites are met
+        "tracks_on": {
+            "atmo": "atmo/on/asset.opus",
+            "sfx": "sfx/on/asset.opus",
+            "dialogue": "dialogue/on/asset.opus",
+            "vo": "vo/on/asset.opus"
+        },
 
-    prerender:
-      script: path_to_python         # runs at prefetch time
-      human_description: string      # plain language statement of what this script does
-                                     # SOURCE OF TRUTH — script is a compiled artifact
-      output_track: vo | dialogue    # which track receives the rendered file
+        # off-track: plays when prerequisites are NOT met
+        # typically the narrator redirecting the walker
+        "tracks_off": {
+            "atmo": "atmo/off/asset.opus",
+            "sfx": None,
+            "dialogue": None,
+            "vo": "vo/off/redirect.opus"   # "You haven't been to the town hall yet..."
+        },
+
+        # optional pre-render (phase 2)
+        "prerender": {
+            "script": "path_to_python",
+            "human_description": "string", # SOURCE OF TRUTH — script is compiled artifact
+            "output_track": "vo"           # which track receives the rendered file
+        }
+    }
+]
 ```
+
+Each waypoint is self-contained. The `requires` list defines the intended visit order. The `tracks_on`/`tracks_off` split lets the author guide walkers who arrive out of sequence — the off-track VO can redirect them ("Turn around, head to the town square first") without breaking the experience. When `same_audio` is True, `tracks_on` plays regardless of prerequisite state.
 
 The `human_description` field on the pre-render script is mandatory and is the source of truth. If the script and the description diverge, the description wins and the script gets regenerated. This is the debugging interface, not the code.
 
 ---
 
-## Authoring Tool — MVP UIX
+## Authoring Tool — MVP UIX (`editor.html`)
 
-A single HTML file. No framework. Leaflet.js for the map (OpenStreetMap tiles, free). The tool exports a cartridge YAML file. localStorage autosaves continuously.
+A single HTML file. No framework. Leaflet.js for the map (CartoDB Dark Matter tiles, free). The tool exports a `.pr` zip package. localStorage autosaves metadata continuously. Audio blobs live in IndexedDB.
 
-**Three zones:**
+**Two modes (toolbar):**
 
-**Map canvas (main area)** — real map of the city. Click to place a waypoint node. Click two waypoints to draw a directed event arc between them. Node color: gray (no composition), yellow (composition authored), green (pre-render script attached). Arc color follows destination node. The whole story's shape is visible at a glance.
+**Navigate mode** — pan and zoom the map. Tap a waypoint to open its editor panel. This is the default.
 
-**Event panel (right sidebar, opens on arc click)** — everything about one event. Top: trigger config for destination waypoint (type selector, radius, IDs). Middle: four-track composition stack — one row per track (ATMO, SFX, DIALOGUE, VO), each row has a human description field, an asset filename slot, and relevant timing controls. Bottom: requires tags (multi-select from tag rail), emits tags (text input), pre-render human description field, output track selector.
+**Place mode** — tap anywhere on the map to drop a new waypoint. Each waypoint appears as a circle with its trigger radius.
 
-**Tag rail (bottom strip)** — every tag used anywhere in the cartridge, auto-populated as authors type into requires/emits fields. Click a tag to highlight every event and waypoint that touches it. Audit your narrative logic without reading YAML.
+**Map canvas (full screen)** — dark-themed city map. Waypoints render as green circles (radius visualised). Waypoints with prerequisites show in blue with a `[n]` badge indicating prerequisite count. Dashed amber arrows show prerequisite dependencies between waypoints — the intended visit order is visible at a glance without reading any config.
 
-**Export button (top right)** — dumps cartridge YAML. That's it.
+**Waypoint editor panel (slide-up sheet on tap)** — everything about one waypoint:
+- **Name** — editable text field
+- **Coordinates** — lat/lng number inputs (editable for precise placement)
+- **Trigger radius** — slider 5–100m with numeric display
+- **Prerequisites** — dropdown to add other waypoints as prerequisites, each listed with a delete button. Empty by default — the author explicitly opts into ordering
+- **Same audio checkbox** — shown when prerequisites exist. Checked by default (one set of audio plays regardless of prerequisite state). Uncheck to reveal the on-track/off-track tab switcher
+- **Audio tracks** — four track rows (ATMO, SFX, DIALOGUE, VO). Each row: upload button, filename display, play/pause, delete. When "same audio" is unchecked, two tabs switch between on-track (green, plays when prerequisites met) and off-track (amber, plays when prerequisites not met — the narrator redirects the walker)
+- **Delete waypoint** — removes the waypoint and cleans up all prerequisites that reference it
+
+**Save/Open buttons (toolbar):**
+- **Save** — builds and downloads a `.pr` zip package: `cartridge.py` (with self-verification), `manifest.json` (sha256 of every file), and audio assets organised in `atmo/`, `sfx/`, `dialogue/`, `vo/` directories with `on/`/`off/` subdirectories
+- **Open** — uploads a `.pr` zip, parses the Python dicts from `cartridge.py`, loads audio blobs from the zip, restores everything on the map
 
 The map is not decorative. The map is the editor. Geography and narrative are the same axis.
 
@@ -147,35 +160,33 @@ walker position updates every 3 seconds
 calculate distance to all waypoints
 ↓
 any waypoint within 100m?
-  → fire pre-render script for that waypoint's incoming event(s)
-  → pass: session.tags, session.path, event.prompt_template
-  → script writes rendered audio to warm_events cache
+  → fire pre-render script for that waypoint
+  → pass: session.visited, session.path, waypoint.requires
+  → script writes rendered audio to warm_waypoints cache
   → timeout: if script fails after 30s, mark fallback
 ↓
 walker hits waypoint trigger radius (default 20m)
-  → play warm composition if available
-  → play static fallback if not
+  → check session.visited against waypoint.requires
+  → all prerequisites met? → play on-track composition
+  → prerequisites missing? → play off-track composition
+  → play warm (pre-rendered) composition if available, static fallback if not
+  → add waypoint_id to session.visited
   → append waypoint_id to session.path
-  → union event.emits into session.tags
-  → close current event, open next
 ```
 
-Pre-render scripts are sandboxed: they receive a session JSON on stdin, write one audio file to a designated output path, and exit. No network access except to TTS APIs. No filesystem access outside their sandbox directory. A malicious tour author cannot reach anything outside their own event's pre-render output.
+Pre-render scripts are sandboxed: they receive a session JSON on stdin, write one audio file to a designated output path, and exit. No network access except to TTS APIs. No filesystem access outside their sandbox directory. A malicious tour author cannot reach anything outside their own waypoint's pre-render output.
 
 ---
 
 ## Branch Logic
 
-The system does not enforce a linear sequence. The walker's path emerges from tag prerequisites and the prefetch radius preparing all nearby options simultaneously.
+The system does not enforce a linear sequence. The walker can visit waypoints in any order. Prerequisites determine what they *hear*, not where they can *go*.
 
-A waypoint visited without its required tags plays a partial composition — atmosphere only, a hint that something is missing. The walker feels the gap. When they have accumulated the right tags and return, the full composition unlocks. The city teaches sequence through withholding, not through walls.
+A walker who arrives at a waypoint without having visited its prerequisites hears the off-track composition — typically the narrator redirecting them: "You should visit the town hall first. Head north through the square." The waypoint still registers as visited. When the walker has completed the prerequisites and returns, the on-track composition plays. The city teaches sequence through narration, not through walls.
 
-The push after a waypoint fires reads:
-```
-current_waypoint_id + path[-1] + dominant_tags → recommended next event
-```
+If `same_audio` is true (the default when no prerequisites are set), the same four tracks play regardless of visit order. The author only needs to think about on-track/off-track when they explicitly add prerequisites — the complexity is opt-in.
 
-The author writes this routing table explicitly for dramatic branches that matter. Everything else falls back to tag-weight scoring: the event whose `requires` tags most overlap with the current session tags wins.
+The prefetch radius (100m) prepares all nearby waypoints simultaneously. The player pre-renders both on-track and off-track compositions when approaching a waypoint with prerequisites, since it cannot know in advance which the walker will need.
 
 ---
 
@@ -183,7 +194,7 @@ The author writes this routing table explicitly for dramatic branches that matte
 
 The four-track architecture is the localisation boundary. A tour in Estonian is the same cartridge with the DIALOGUE and VO tracks swapped for Estonian-language assets. ATMO and SFX are universal — cobblestones sound the same in every language.
 
-The cartridge schema supports a `locales` block per composition that maps locale codes to alternative asset refs for DIALOGUE and VO tracks. The player selects locale at tour start (or inherits from browser preference) and loads the appropriate track assets. One cartridge, multiple languages, no structural changes.
+The cartridge schema supports a `locale/` directory in the package that maps locale codes to alternative asset refs for DIALOGUE and VO tracks. The player selects locale at tour start (or inherits from browser preference) and loads the appropriate track assets. One cartridge, multiple languages, no structural changes.
 
 ---
 
@@ -212,81 +223,95 @@ TOUR = {
     "id": "tallinn-old-town-medieval",
     "title": "Tallinn Old Town",
     "skin": "medieval",
-    "global_atmo": "atmo/old-town-rain.opus",
+    "global_atmo": "atmo/on/old-town-rain.opus",
 }
 
 WAYPOINTS = [
     {
+        "id": "viru-gate",
+        "name": "Viru Gate",
+        "trigger": {"type": "gps", "coords": [59.4365, 24.7490], "radius_m": 20},
+        "requires": [],
+        "same_audio": True,
+        "tracks_on": {
+            "atmo": "atmo/on/old-town-rain.opus",
+            "sfx": "sfx/on/cobblestone-steps.opus",
+            "dialogue": None,
+            "vo": "vo/on/intro-narration.opus"
+        },
+        "tracks_off": {
+            "atmo": "atmo/on/old-town-rain.opus",
+            "sfx": "sfx/on/cobblestone-steps.opus",
+            "dialogue": None,
+            "vo": "vo/on/intro-narration.opus"
+        }
+    },
+    {
         "id": "town-hall",
+        "name": "Town Hall",
         "trigger": {"type": "gps", "coords": [59.4370, 24.7453], "radius_m": 20},
-        "emits": ["visited_town_hall"],
+        "requires": ["viru-gate"],          # must visit Viru Gate first
+        "same_audio": False,
+        "tracks_on": {
+            "atmo": "atmo/on/town-square-bustle.opus",
+            "sfx": "sfx/on/church-bell.opus",
+            "dialogue": "dialogue/on/ghost-monologue.opus",
+            "vo": "vo/on/town-hall-history.opus"
+        },
+        "tracks_off": {                     # walker skipped Viru Gate
+            "atmo": "atmo/off/town-square-quiet.opus",
+            "sfx": None,
+            "dialogue": None,
+            "vo": "vo/off/redirect-to-viru.opus"  # "Start at the gate. Head east."
+        }
     },
     # ...
 ]
 
-EVENTS = [
-    {
-        "id": "approach-town-hall",
-        "from_waypoint": "viru-gate",
-        "to_waypoint": "town-hall",
-        "requires": [],
-        "composition": {
-            "atmo": {"asset": "atmo/old-town-rain.opus", "fade_in_s": 3, "fade_out_s": 5},
-            "sfx": [{"asset": "sfx/cobblestone-steps.opus", "cue_s": 0}],
-            "dialogue": [{"asset": "dialogue/ghost-monologue.opus", "cue_s": 5, "character": "ghost"}],
-            "vo": {"asset": "vo/intro-narration.opus"},
-        },
-    },
-    # ...
-]
+REVENUE_SPLIT = {
+    "tour_maker": 0.70,
+    "platform": 0.20,
+    "settlement": 0.10
+}
 
 # --- self-verification (runs when you execute this file directly) ---
 if __name__ == "__main__":
-    import hashlib, base64, json, os, sys, zipfile
+    import hashlib, json, os, sys
 
     def verify():
-        # find the .zip this cartridge lives in (or the directory around it)
         cart_dir = os.path.dirname(os.path.abspath(__file__))
         manifest_path = os.path.join(cart_dir, "manifest.json")
-
         if not os.path.exists(manifest_path):
-            print("No manifest.json found — cannot verify assets.")
+            print("No manifest.json found.")
             return False
-
-        # check manifest hash
         manifest_bytes = open(manifest_path, "rb").read()
-        manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
-        if manifest_hash != MANIFEST_HASH:
-            print("FAIL: manifest.json has been modified since signing.")
+        if hashlib.sha256(manifest_bytes).hexdigest() != MANIFEST_HASH:
+            print("FAIL: manifest.json modified since signing.")
             return False
-
-        # check every file listed in manifest
         manifest = json.loads(manifest_bytes)
         for filepath, entry in manifest["files"].items():
             full_path = os.path.join(cart_dir, filepath)
             if not os.path.exists(full_path):
-                print(f"FAIL: missing file {filepath}")
+                print(f"FAIL: missing {filepath}")
                 return False
-            file_bytes = open(full_path, "rb").read()
-            if len(file_bytes) != entry["size"]:
-                print(f"FAIL: size mismatch for {filepath}")
+            data = open(full_path, "rb").read()
+            if len(data) != entry["size"]:
+                print(f"FAIL: size mismatch {filepath}")
                 return False
-            if hashlib.sha256(file_bytes).hexdigest() != entry["sha256"]:
-                print(f"FAIL: checksum mismatch for {filepath}")
+            if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                print(f"FAIL: checksum mismatch {filepath}")
                 return False
-
-        # check for undeclared files
-        declared = set(manifest["files"].keys()) | {"manifest.json"}
+        declared = set(manifest["files"].keys()) | {"manifest.json", "cartridge.py"}
         for root, dirs, files in os.walk(cart_dir):
             for f in files:
                 rel = os.path.relpath(os.path.join(root, f), cart_dir)
+                if rel.startswith("."):
+                    continue
                 if rel not in declared:
                     print(f"FAIL: undeclared file {rel}")
                     return False
-
-        print(f"OK: all {len(manifest['files'])} files verified.")
-        print(f"    author: {AUTHOR}")
-        print(f"    signed: {SIGNED_AT}")
+        print(f"OK: {len(manifest['files'])} files verified.")
+        print(f"    tour: {TOUR['title']}")
         return True
 
     sys.exit(0 if verify() else 1)
@@ -336,36 +361,45 @@ my-tour.pr
 ├── manifest.json                   # file inventory with checksums
 │
 ├── atmo/
-│   ├── old-town-rain.opus
-│   ├── harbour-wind.opus
-│   └── tavern-interior.opus
+│   ├── on/                         # on-track (prerequisites met)
+│   │   ├── old-town-rain.opus
+│   │   └── tavern-interior.opus
+│   └── off/                        # off-track (prerequisites not met)
+│       └── town-square-quiet.opus
 │
 ├── sfx/
-│   ├── door-creak.opus
-│   ├── church-bell.opus
-│   └── cobblestone-steps.opus
+│   ├── on/
+│   │   ├── door-creak.opus
+│   │   └── cobblestone-steps.opus
+│   └── off/
 │
 ├── dialogue/
-│   ├── barman-greeting.opus
-│   ├── ghost-monologue.opus
-│   └── officer-interrogation.opus
+│   ├── on/
+│   │   ├── ghost-monologue.opus
+│   │   └── barman-greeting.opus
+│   └── off/
 │
 ├── vo/
-│   ├── intro-narration.opus
-│   ├── waypoint-3-fallback.opus     # static VO fallback if pre-render fails
-│   └── finale.opus
+│   ├── on/
+│   │   ├── intro-narration.opus
+│   │   └── town-hall-history.opus
+│   └── off/
+│       ├── redirect-to-viru.opus   # "Start at the gate. Head east."
+│       └── redirect-to-square.opus
 │
 └── locale/
     └── et/                          # Estonian localisation
         ├── dialogue/
-        │   ├── barman-greeting.opus
-        │   └── ghost-monologue.opus
+        │   └── on/
+        │       └── ghost-monologue.opus
         └── vo/
-            ├── intro-narration.opus
-            └── finale.opus
+            ├── on/
+            │   └── intro-narration.opus
+            └── off/
+                └── redirect-to-viru.opus
 ```
 
-The four top-level asset directories mirror the four-track audio model: `atmo/`, `sfx/`, `dialogue/`, `vo/`. The `locale/` directory holds per-language overrides for DIALOGUE and VO only — ATMO and SFX are universal.
+The four top-level asset directories mirror the four-track audio model: `atmo/`, `sfx/`, `dialogue/`, `vo/`. Each has `on/` and `off/` subdirectories for the two audio states. When `same_audio` is true, the `off/` directory is either empty or contains duplicates of the `on/` assets. The `locale/` directory holds per-language overrides for DIALOGUE and VO only — ATMO and SFX are universal.
 
 Asset format is Opus (`.opus`) — small files, wide browser support, good at low bitrates for voice. The player MAY accept `.mp3` and `.wav` as fallbacks, but Opus is the default export from the authoring tool.
 
@@ -465,15 +499,201 @@ No hard limit on package size, but the authoring tool warns above 50MB and block
 
 ## What to Build First
 
-1. The cartridge schema validator — a Python script that reads a YAML cartridge and reports errors. This defines the format precisely before anything else depends on it.
+1. The single-file HTML player (`index.html`) — loads a `.pr` package from a URL parameter, watches GPS position, fires waypoint triggers, checks prerequisites, plays on-track or off-track audio accordingly. One hardcoded Tallinn Old Town tour with 4–5 waypoints, GPS triggers only.
 
-2. The single-file HTML player — loads a cartridge from a URL parameter, watches GPS position, fires waypoint triggers, logs events to console. Audio stubbed as text display. No pre-render, no branching. One hardcoded Tallinn Old Town tour with 4 waypoints, GPS triggers only.
+2. The authoring tool (`editor.html`) — map canvas, waypoint editor with prerequisite management and dual audio set authoring, `.pr` zip export/import. *(Built — see editor.html)*
 
-3. The authoring tool HTML — map canvas, event panel, tag rail, YAML export. No asset upload in MVP — asset fields are just filename strings the author manages manually.
+3. The cartridge schema validator — a Python script that reads a `cartridge.py` and reports errors: missing prerequisites, orphaned asset references, broken prerequisite chains (circular dependencies).
 
-4. The pre-render sandbox — a Python script runner that accepts session JSON on stdin, executes a tour-supplied script in isolation, and writes one audio file out.
+4. The pre-render sandbox — a Python script runner that accepts session JSON on stdin, executes a waypoint's pre-render script in isolation, and writes one audio file out.
 
-The player and the authoring tool are both single HTML files. They share nothing at runtime. The cartridge YAML is the only contract between them.
+5. The identity manager (`identity.html`) — generate Ed25519 keypair, choose handle, export/import key. Shared across all tools on the same origin. *(Built — see identity.html)*
+
+6. The audio recorder and editor (`recorder.html`) — record from microphone with GPS tagging and Ed25519 signing, import external audio files, trim, destructive composite, loop fade, plugin architecture placeholders. Export signed audio with provenance sidecar JSON.
+
+The player, authoring tool, recorder, and identity manager are all single HTML files. They share nothing at runtime except the Ed25519 identity (via shared IndexedDB/localStorage on the same origin). The `cartridge.py` inside the `.pr` zip is the contract between player and editor. The sidecar JSON is the contract between recorder and editor.
+
+---
+
+## Audio Recorder & Editor (`recorder.html`) — Design (2026-04-02)
+
+### The Problem
+
+Tour makers need audio. The four-track model (ATMO, SFX, DIALOGUE, VO) requires a steady supply of field recordings, voice takes, and ambient captures. Currently, tour makers bring their own audio files with no provenance metadata — no one knows where a recording was made, when, or by whom. If a tour uses a beautiful rain ambience from Tallinn's Old Town, there is no way for another tour maker to find it, credit it, or visit the same spot to record more.
+
+The audio layer should be a shared commons. Not a centralised library — a signed, attributable pool where every clip carries its own provenance and anyone can verify who recorded it, where, and when.
+
+### Core Concept
+
+Anyone can record audio and sign it with their Ed25519 identity. The recording carries embedded metadata: GPS coordinates, timestamp, recorder's public key, and a signature over the raw audio data. This metadata is permanent and non-removable — it is the recording's birth certificate.
+
+When a tour maker uses a signed clip in their tour, the provenance chain is visible: the tour's `cartridge.py` references an audio file, that file carries a signature, that signature traces back to a public key, that public key traces back to a person who stood at specific coordinates at a specific time and pressed record. Anyone can verify this. Anyone can visit the same location. Anyone can find other tours that use the same clip, or other clips by the same recorder.
+
+The recordings are not uploaded anywhere automatically. The recorder exports files. The tour maker imports them into the editor. The files carry their provenance with them wherever they go — on a USB stick, in a shared folder, in a zip file attached to an email. The metadata is in the file, not in a database.
+
+### Recording
+
+The recorder is a single HTML file. It uses the MediaRecorder API to capture audio from the device microphone. It uses the Geolocation API to tag the recording with coordinates. It uses the Web Crypto API to sign the result with the user's Ed25519 keypair (generated on first launch, same as walker identity — same key if the recorder and player share an origin, separate key otherwise).
+
+**Recording flow:**
+
+```
+User taps Record
+  → MediaRecorder starts capturing from microphone
+  → GPS position sampled at start and end of recording
+  → User taps Stop
+  → Raw audio is captured as a WAV or Opus blob
+  → Metadata is assembled:
+      {
+        recorder_pubkey: "base64...",
+        location: { lat: 59.4370, lng: 24.7453, accuracy_m: 8 },
+        recorded_at: "2026-04-02T14:30:00Z",
+        duration_s: 47.2,
+        sample_rate: 48000,
+        format: "wav"
+      }
+  → Signature is computed over: sha256(audio_bytes) + metadata JSON
+  → File is stored locally in IndexedDB with metadata
+```
+
+The signature covers the raw audio data and the metadata together. If either is modified after recording, the signature breaks. This means:
+
+- You cannot re-tag a recording with a different location
+- You cannot claim someone else's recording as yours
+- You cannot silently alter the audio and keep the original provenance
+- You *can* derive a new clip from the original (edit, trim, process) — but the derived clip gets a new signature and its metadata includes a `derived_from` field pointing to the original's hash. The provenance chain is explicit.
+
+### Import from External Recorder
+
+Not everyone records with their phone. Some people use dedicated field recorders, shotgun mics, binaural rigs. The recorder tool handles this:
+
+**Import flow:**
+
+```
+User taps Import
+  → File picker accepts .wav, .mp3, .opus, .flac, .ogg
+  → Audio is loaded into the editor
+  → User is prompted to add location:
+      - Use current GPS position ("I'm at the recording location now")
+      - Enter coordinates manually
+      - Pick on map (same Leaflet map as the editor)
+      - Leave blank ("location unknown" — still usable, just not geo-tagged)
+  → User confirms
+  → File is signed with recorder's Ed25519 key
+  → Metadata notes: source: "imported", original_filename: "zoom-h6-take-042.wav"
+  → Stored in IndexedDB
+```
+
+The imported file gets the same provenance treatment as a live recording. The `source: "imported"` flag is honest — anyone checking the metadata knows this was not captured live through the browser. The signature still guarantees who imported it and when.
+
+### Audio Editor
+
+The editor is destructive — it modifies the actual audio buffer. There is no undo history beyond the last save. This is intentional: the audio files must be small and final for tour packaging. Non-destructive editing belongs in a DAW, not in a mobile browser tool.
+
+All editing operates on a single audio buffer (an `AudioBuffer` from the Web Audio API). The waveform is rendered to a `<canvas>` element with touch-draggable selection regions.
+
+#### Core Operations
+
+**Trim** — select a region by dragging on the waveform. Cut everything outside the selection. This is the most-used operation: a 3-minute field recording becomes a 15-second ambient loop.
+
+**Destructive composite** — select a region containing a click, pop, footstep, or unwanted transient. The editor replaces the selection with interpolated audio from the surrounding context. Implementation: crossfade the samples immediately before the selection into the samples immediately after, with a cosine blend across the gap width. This is not noise removal — it is a surgical patch. Good enough for removing a cough from a 30-second atmo recording. Not good enough for removing traffic from a voice-over. That is what the plugin architecture is for.
+
+**Loop fade** — for ambient tracks that need to loop seamlessly. The editor takes the last N seconds and the first N seconds of the buffer, crossfades them into each other, and writes the result as the new start/end. The loop point becomes inaudible. N is configurable (default 2 seconds). The waveform display shows the loop boundary with a visual marker.
+
+#### Plugin Architecture
+
+The editor has slots for audio processing plugins. Each plugin is a function that receives an `AudioBuffer` (or a selected region of one) and returns a modified `AudioBuffer`. Plugins are not loaded from external sources — they are defined in the HTML file itself, each in a clearly marked block.
+
+**Plugin interface:**
+
+```javascript
+// Every plugin implements this shape
+{
+  id: "compressor",
+  name: "Compressor",
+  description: "Reduce dynamic range",
+  params: [
+    { id: "threshold", name: "Threshold", type: "range", min: -60, max: 0, default: -24, unit: "dB" },
+    { id: "ratio", name: "Ratio", type: "range", min: 1, max: 20, default: 4, unit: ":1" },
+    { id: "attack", name: "Attack", type: "range", min: 0.001, max: 0.1, default: 0.01, unit: "s" },
+    { id: "release", name: "Release", type: "range", min: 0.01, max: 1, default: 0.1, unit: "s" },
+  ],
+  process: function(audioBuffer, selection, params) {
+    // operates on audioBuffer in place or returns new buffer
+    // selection: { startSample, endSample } or null for full buffer
+    return modifiedAudioBuffer;
+  }
+}
+```
+
+**Placeholder plugins (shipped with recorder.html, implemented later):**
+
+- **Equalizer** — 3-band parametric EQ (low shelf, mid peak, high shelf). For rolling off low-frequency rumble from wind or removing harsh sibilance from voice recordings.
+- **Compressor** — threshold, ratio, attack, release. For evening out dynamic range in dialogue recordings where the speaker moves relative to the mic.
+- **De-esser** — frequency-targeted compressor. Detects sibilance (typically 4–8 kHz), applies gain reduction only to those frequencies. For voice-over tracks.
+- **Noise gate** — threshold-based silence trimmer. For cleaning up dialogue recordings: silence between phrases becomes actual silence, not room tone at -40dB.
+
+The plugin params render as sliders in the editor panel. The user adjusts, previews (non-destructive playback through the processing chain), and applies (destructive write to the buffer). Preview uses the Web Audio API's real-time processing nodes (`BiquadFilterNode`, `DynamicsCompressorNode`). Apply renders offline via `OfflineAudioContext` and writes the result back to the buffer.
+
+Each plugin that ships with the file is a placeholder: the `process` function contains a `// TODO: implement` comment and returns the buffer unchanged. The interface, parameter UI, and preview wiring are all in place. The actual DSP is filled in later — or by anyone who forks the file.
+
+### Provenance Metadata Format
+
+Each audio file produced by the recorder carries a sidecar `.json` file with the same base name (or the metadata is embedded in the file's ID3/Vorbis tags when the format supports it). For the MVP, sidecar JSON is simpler and works with every format:
+
+```json
+{
+  "version": 1,
+  "type": "pr-audio",
+  "audio_hash": "sha256:a3f9c2d1...",
+  "recorder": {
+    "pubkey": "base64...",
+    "signature": "base64..."
+  },
+  "location": {
+    "lat": 59.4370,
+    "lng": 24.7453,
+    "accuracy_m": 8
+  },
+  "recorded_at": "2026-04-02T14:30:00Z",
+  "duration_s": 47.2,
+  "format": "opus",
+  "source": "live",
+  "derived_from": null,
+  "edit_history": [
+    "trim 0.0-2.3s, 44.1-47.2s",
+    "loop_fade 2.0s",
+    "composite 12.4-12.6s"
+  ],
+  "tags": ["atmo", "rain", "old-town", "tallinn"]
+}
+```
+
+The `edit_history` is append-only. Every destructive operation logs a human-readable description of what it did. The original `audio_hash` refers to the hash *after* the latest edit — the history documents the transformations, but only the final file is kept. If you need the original, you have the original. The recorder does not store every intermediate version.
+
+The `tags` field is free-form and author-assigned. Tags are for discovery: a tour maker looking for rain ambience searches `["rain", "atmo"]` and finds every signed recording that matches. Tags are not enforced — they are suggestions. The audio is what it sounds like, not what the tag says.
+
+### Derived Works
+
+When a tour maker uses a clip from someone else's recording:
+
+1. The clip's sidecar JSON is included in the `.pr` tour package alongside the audio file
+2. The tour's `cartridge.py` can reference the original recorder's pubkey for attribution
+3. Anyone inspecting the tour can trace any audio asset back to its recorder, location, and timestamp
+
+This creates a web of attribution without a central database. The graph is implicit in the files themselves. If ten tours use the same rain recording from Tallinn Old Town, all ten carry the same `recorder.pubkey` in their sidecar JSONs. A tool that scans `.pr` packages can reconstruct the graph: which recorders contribute to which tours, which locations produce the most-used clips, which tour makers share audio sources.
+
+There is no licensing system in the protocol. The recorder signs audio and publishes it. A tour maker uses it. The signature is attribution, not permission. If the community wants to build a licensing layer on top (Creative Commons, revenue share for audio contributors), it can — the provenance metadata is sufficient to support any licensing model. The protocol does not choose one. The gaps are load-bearing.
+
+### Recorder UI (MVP)
+
+A single HTML file, mobile-first. Three screens:
+
+**Record screen** — large Record button (red circle, large tap target). GPS status indicator. Timer showing recording duration. Level meter showing input amplitude. Stop button appears while recording. On stop: preview playback, name the recording, confirm or discard.
+
+**Library screen** — list of all local recordings with: name, duration, location (if tagged), date, waveform thumbnail. Tap to open in editor. Import button for external files. Export button to save a recording + its sidecar JSON as a zip.
+
+**Editor screen** — full-width waveform display on `<canvas>`. Touch to select regions. Toolbar: Trim, Composite, Loop Fade. Plugin slots below the toolbar (collapsed by default, expand on tap). Each plugin shows its parameter sliders when expanded. Preview button (plays the current buffer through the processing chain without writing). Apply button (destructive write). Export button (saves the edited audio + updated sidecar JSON).
 
 ---
 
@@ -491,23 +711,36 @@ No backend. No settlement implementation. No payment rails. No asset hosting. No
 
 If the platform controls identity, the platform controls payment. If the platform controls payment, no one else can run the system. The platform becomes a tollbooth, and tollbooths attract regulators, rent-seekers, and single points of failure. We want the opposite: a system where anyone can verify that a walker visited a checkpoint, and anyone can settle the resulting payment, and no single entity can shut it down or skim it.
 
-### Walker Identity
+### Identity System (`identity.html`)
 
-The walker generates an Ed25519 keypair on first launch. The private key stays on their device (IndexedDB, never exported). The public key is their identity — a 32-byte string, no registration, no email, no server involved.
+Every participant — walker, tour maker, recorder — generates an Ed25519 keypair locally. The public key is the identity. The private key stays on the device (IndexedDB, exportable). No registration, no email, no server.
 
-The walker's public key is their **wallet address** in the same way a Bitcoin address is a public key hash. Except there is no blockchain, no token, no gas fee. Just a keypair and a signature.
+Each identity also has a **handle** — a human-readable screen name chosen by the user. The handle is cosmetic. It is **not unique**. No duplicate check, anywhere. Two people can pick the same handle. The public key is the real identity. The handle is for humans.
+
+**Identity management flow:**
 
 ```
-First launch:
-  → crypto.subtle.generateKey("Ed25519")
-  → store private key in IndexedDB
-  → public key = walker ID
-  → done. No network call. No registration. Works in airplane mode.
+identity.html
+  → User enters a handle ("kaspar", "ghost_narrator", "rain_collector")
+  → Ed25519 keypair generated via crypto.subtle.generateKey
+  → Private key stored in IndexedDB (never leaves device unless exported)
+  → Public key = identity, stored in localStorage as base64
+  → Export: downloads a .pr-identity.json file containing handle + JWK keypair
+  → Import: uploads a .pr-identity.json, verifies key pair, restores identity
+  → Delete: wipes keys from IndexedDB, clears localStorage
 ```
 
-The walker can back up their keypair (export to file, QR code, passkey sync) or generate a new one. Losing the private key means losing the identity — and the accumulated walk history attached to it. That's the tradeoff for no central authority.
+**Handle collisions on servers:** When two different pubkeys share the same handle on the same settlement provider or directory server, they are disambiguated by appending an index in arrival order: `kaspar[0]`, `kaspar[1]`. The server does not reject either. It does not ask either to change. The index is a display suffix, not part of the identity. The pubkey is the identity. The handle is a courtesy.
 
-Multiple devices: the walker exports their private key and imports it on the other device. Or they generate a second keypair and link them with a self-signed attestation: "pubkey A and pubkey B are the same walker, signed by A, countersigned by B." Any settlement provider that sees both signatures treats them as one identity. No server needed.
+This means:
+- Handle squatting is impossible — there is nothing to squat
+- No one needs permission to pick a name
+- The handle can change at any time without affecting the identity
+- Two users with the same handle on different servers have no collision at all
+
+**Cross-tool identity:** The identity is shared across all PR tools on the same origin (player, editor, recorder) via the same IndexedDB and localStorage. The recorder signs audio with the same key the walker uses for checkpoint receipts. The tour maker signs cartridges with the same key. One keypair, all roles. The role is determined by what you do with the key, not by the key itself.
+
+**Multi-device:** Export the `.pr-identity.json` and import it on the other device. Or generate a second keypair and link them with a self-signed attestation: "pubkey A and pubkey B are the same person, signed by A, countersigned by B." Any settlement provider that sees both signatures treats them as one identity. No server needed.
 
 ### ESP32 Identity
 
@@ -632,6 +865,117 @@ The receipts are signed, timestamped, and independently verifiable. That is ever
 The trust model is simpler: the walker trusts their own device. The sponsor trusts their own ESP32. The settlement provider trusts Ed25519. Nobody needs to trust a consensus mechanism operated by strangers.
 
 If someone wants to anchor receipt hashes to a blockchain for additional auditability, they can. It's an append-only log of hashes — any chain will do. But the system does not require it and does not default to it. The cryptography is sufficient.
+
+---
+
+## Tour Promotion Kit — Editor Built-In (2026-04-02)
+
+### The Problem
+
+Tour makers create something strange and beautiful and then have no idea how to tell anyone about it. Promotion is a separate skill, a separate tool, a separate mental mode. The gap between "I just finished this tour" and "someone is walking it" is where most tours die. If the tour maker has to open Canva, write copy from scratch, find a screenshot tool, resize for Instagram, and remember what hashtags work — they won't. The ones who do promote are the ones who were already good at marketing. The product should not select for marketers.
+
+Self-promotion must be the path of least resistance. The moment the tour maker hits Save, the next thing the editor offers is not "done" — it is "tell people."
+
+### Design Principle
+
+The promotion flow is not a separate tool. It lives inside `editor.html`, directly after the save/export action. The editor already knows everything about the tour: the waypoints, the city, the route shape, the narrative skin, the audio track names. It uses that knowledge to pre-generate promotional materials that the tour maker only needs to approve and share. Zero blank-page anxiety.
+
+### The Flow
+
+```
+Tour maker hits Save
+  → .pr package downloads
+  → Editor immediately opens the Promotion Panel (slide-up sheet, same pattern as waypoint editor)
+  → Panel contains:
+      1. A generated map card (static image of the route)
+      2. Pre-written copy in three lengths (tweet, caption, paragraph)
+      3. Photo upload slots (up to 4)
+      4. One-tap share buttons for each platform
+```
+
+The panel is dismissible. It is not a gate. But it appears by default, every time, because the moment after saving is the moment of highest motivation. The tour maker just finished something — they want to show it off. The editor catches that impulse and gives it a channel.
+
+### Map Card
+
+The editor renders a static image of the tour route onto a map snapshot. This is the hero image for every social post. It is generated entirely client-side:
+
+- The Leaflet map canvas is captured as a PNG via `HTMLCanvasElement.toDataURL()` (CartoDB tiles are canvas-rendered, so this works without CORS issues when using the canvas renderer)
+- Waypoints are drawn as numbered circles on the route
+- The tour title is overlaid at the top in a clean sans-serif font
+- The city name (derived from reverse geocoding the centroid of the waypoints, or manually entered by the author) is overlaid below the title
+- A subtle PR watermark/logo sits in the corner — small enough to be tasteful, persistent enough to be discoverable
+- The card is sized for social media: 1200×630px (Open Graph / Twitter Card standard) and 1080×1080px (Instagram square). Both are generated. The tour maker picks which to use per platform.
+
+The map card is the thing that makes someone stop scrolling. A route drawn on a dark city map with numbered waypoints looks like a conspiracy board or a treasure map. It is inherently shareable because it provokes curiosity: "what is this route and why does it have seven stops?"
+
+### Pre-Written Copy
+
+The editor generates three lengths of promotional copy from the tour metadata:
+
+**Short (tweet-length, ~200 chars):**
+Uses tour title, city, waypoint count, and narrative skin to generate a hook. Example:
+> *"7 waypoints through Tallinn Old Town. A medieval ghost has something to tell you at the town hall. Free, GPS-guided, no app install. [link]"*
+
+**Medium (Instagram caption, ~400 chars):**
+Adds the first waypoint's name as a starting point, mentions the tour duration estimate (derived from waypoint distances), and includes a call to action.
+
+**Long (paragraph for a blog post or event listing, ~800 chars):**
+Full description including the narrative frame, what the walker will experience, and practical details (starting point, estimated walking time, what to bring — headphones).
+
+All three are editable inline. The tour maker can rewrite any of them before sharing. The generated text is a starting point, not a mandate. The point is that the text field is never empty.
+
+Copy generation is deterministic template expansion from tour metadata — no LLM call needed. The templates are baked into `editor.html`. They use the tour title, skin name, city, waypoint count, waypoint names, estimated distance, and estimated walking time. Simple string interpolation. If the tour metadata is good, the copy is good. If the metadata is sparse, the copy is sparse but still functional.
+
+### Photo Slots
+
+The map card alone is strong, but real photos of the locations convert better. The promotion panel has four photo upload slots:
+
+- Tap to upload from camera roll or take a photo
+- Photos are resized client-side to social media dimensions (1080px wide max)
+- Photos are arranged in a carousel preview (for platforms that support multi-image posts)
+- The first photo slot suggests: "Photo of the starting point" — the rest are free
+- Photos are stored temporarily in memory — they are not part of the `.pr` package and not saved to IndexedDB. They exist only for the duration of the promotion flow. If the tour maker closes the panel and reopens it, the photos are gone. This is intentional: photos are ephemeral promotion material, not tour assets.
+
+### Share Actions
+
+Each share button composes a platform-specific post and opens the native share flow:
+
+**Web Share API (primary path):**
+If the browser supports `navigator.share()` (most mobile browsers do), the "Share" button triggers the native share sheet with:
+- `title`: tour title
+- `text`: the selected copy length (short by default)
+- `url`: the tour's playable URL (tour link with the tour ID parameter)
+- `files`: the map card image + any uploaded photos (if `navigator.canShare({files})` returns true)
+
+This covers every platform the user has installed — Instagram, WhatsApp, Telegram, Twitter, Facebook, email — in one tap. The operating system handles the routing. The editor does not need to know which platforms exist.
+
+**Fallback share buttons (desktop and browsers without Web Share API):**
+
+- **Copy link** — copies the tour URL to clipboard. Toast confirmation.
+- **Copy text + link** — copies the selected copy length + URL. For pasting into any text field.
+- **Download images** — downloads the map card (and photos if uploaded) as a zip. For manual posting on desktop.
+- **Twitter/X** — opens `https://twitter.com/intent/tweet?text=...&url=...` in a new tab with the short copy pre-filled.
+- **WhatsApp** — opens `https://api.whatsapp.com/send?text=...` with copy + URL.
+- **Telegram** — opens `https://t.me/share/url?url=...&text=...` with copy + URL.
+
+Each button shows a platform icon and the platform name. The buttons are styled consistently with the editor's dark theme. They are not an afterthought bolted onto a settings page — they are prominent, colourful, and inviting.
+
+### Repeat Promotion
+
+The promotion panel is also accessible from a "Share" button in the editor toolbar — not just after save. A tour maker who wants to promote an existing tour opens the `.pr` file, hits Share, and the same panel appears with the same generated materials. This covers the case where the tour maker saved yesterday and wants to post today, or wants to create a fresh post for a different platform.
+
+### What This Does Not Do
+
+- **No account creation.** The tour maker does not log in to anything. Share actions use platform URLs and the Web Share API. The editor has no server-side component.
+- **No analytics.** The editor does not track whether the share happened, which platform was used, or whether anyone clicked the link. Analytics are for the platform backend (phase 2). The editor is a tool, not a funnel.
+- **No scheduling.** The tour maker shares now or never. If they want to schedule posts, they use their own tools. The editor catches the impulse; it does not manage a content calendar.
+- **No AI copy generation.** The copy templates are deterministic string interpolation. Adding LLM-generated copy is possible later but is not MVP. The templates are good enough because the tour metadata is specific enough. "7 waypoints through Tallinn Old Town" is already more compelling than whatever a tour maker would write from scratch while staring at a blank text box.
+
+### Why This Works
+
+The tour maker's workflow becomes: author → save → share. Three steps, one tool, one session. The share step requires exactly zero creative decisions if the tour maker accepts the defaults — the map card is generated, the copy is generated, the link is generated. They tap Share and pick a platform. Done.
+
+The people who will never open Canva will still share a map card that looks like a treasure map because it appeared in front of them at the right moment and all they had to do was tap. That is the entire design philosophy: **the promotion material generates itself from the creative work the tour maker already did.**
 
 ---
 

@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Pavement Radio — Editor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+#map{flex:1;z-index:1;margin-bottom:60px}
+nav.bottom-nav{position:fixed;bottom:0;left:0;right:0;height:60px;background:#1a1a1a;border-top:1px solid #333;display:flex;z-index:9999;padding-bottom:env(safe-area-inset-bottom,0)}
+nav.bottom-nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-decoration:none;color:#666;font-size:10px;gap:2px;transition:color .15s}
+nav.bottom-nav a.active{color:#5cb85c}
+nav.bottom-nav a:active{opacity:.6}
+nav.bottom-nav svg{width:22px;height:22px;fill:currentColor}
+.toolbar{display:flex;gap:6px;padding:8px 12px;background:#1a1a1a;border-bottom:1px solid #333;z-index:1000;flex-wrap:wrap;align-items:center}
+button{min-height:44px;min-width:44px;padding:8px 16px;border:none;border-radius:6px;font-size:.85em;cursor:pointer;font-weight:600}
+.btn-green{background:#5cb85c;color:#fff}
+.btn-blue{background:#337ab7;color:#fff}
+.btn-amber{background:#f0ad4e;color:#111}
+.btn-red{background:#d9534f;color:#fff}
+.btn-dark{background:#333;color:#ccc}
+.btn-dark.active{background:#5cb85c;color:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+input[type="file"]{display:none}
+.mode-label{color:#888;font-size:.75em;margin-right:4px}
+.spacer{flex:1}
+
+/* Panel */
+.panel-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:2000}
+.panel{position:fixed;bottom:0;left:0;right:0;max-height:85vh;background:#1a1a1a;border-radius:12px 12px 0 0;z-index:2001;overflow-y:auto;padding:16px;display:none}
+.panel-header{display:flex;align-items:center;margin-bottom:12px}
+.panel-header h2{flex:1;font-size:1.1em;color:#5cb85c}
+.panel-close{background:none;border:none;color:#888;font-size:1.5em;cursor:pointer;min-height:44px;min-width:44px}
+label{display:block;color:#aaa;font-size:.8em;margin-bottom:4px;margin-top:12px}
+label:first-of-type{margin-top:0}
+input[type="text"],input[type="number"]{width:100%;padding:10px;font-size:.95em;background:#222;border:1px solid #333;border-radius:6px;color:#eee;min-height:44px}
+input[type="range"]{width:100%;margin:4px 0}
+select{width:100%;padding:10px;font-size:.95em;background:#222;border:1px solid #333;border-radius:6px;color:#eee;min-height:44px}
+.prereq-list{list-style:none;margin-top:8px}
+.prereq-list li{display:flex;align-items:center;gap:8px;margin-bottom:4px;padding:6px 10px;background:#222;border-radius:4px;font-size:.85em}
+.prereq-list li button{min-height:32px;min-width:32px;padding:4px 10px;font-size:.8em}
+.checkbox-row{display:flex;align-items:center;gap:8px;margin-top:12px}
+.checkbox-row input[type="checkbox"]{width:20px;height:20px}
+.audio-tabs{display:flex;gap:4px;margin-top:12px}
+.audio-tab{padding:8px 16px;border:none;border-radius:6px 6px 0 0;font-size:.8em;cursor:pointer;font-weight:600}
+.audio-tab.on{background:#2a4a2a;color:#5cb85c}
+.audio-tab.off{background:#4a3a1a;color:#f0ad4e}
+.audio-tab.active-tab{opacity:1;border-bottom:2px solid}
+.audio-tab:not(.active-tab){opacity:.5}
+.track-row{display:flex;align-items:center;gap:8px;padding:8px;background:#222;border-radius:6px;margin-bottom:6px}
+.track-label{width:70px;font-size:.8em;font-weight:600;color:#888;text-transform:uppercase}
+.track-file{flex:1;font-size:.8em;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.track-meta{font-size:.7em;color:#666;margin-top:2px}
+.track-buttons{display:flex;gap:4px}
+.track-buttons button{min-height:36px;min-width:36px;padding:4px 8px;font-size:.75em}
+.delete-section{margin-top:24px;padding-top:16px;border-top:1px solid #333}
+
+/* Library picker */
+.lib-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:3000}
+.lib-panel{position:fixed;top:10%;left:5%;right:5%;bottom:10%;background:#1a1a1a;border-radius:12px;z-index:3001;overflow-y:auto;padding:16px;display:none}
+.lib-wp-item{padding:10px;background:#222;border-radius:6px;margin-bottom:6px;cursor:pointer}
+.lib-wp-item:hover{background:#2a2a2a}
+.lib-track-item{padding:8px 12px;background:#2a2a2a;border-radius:4px;margin:4px 0;cursor:pointer;font-size:.85em;display:flex;align-items:center;gap:8px}
+.lib-track-item:hover{background:#333}
+
+nav{padding:8px 12px;background:#1a1a1a;border-top:1px solid #333;z-index:1000}
+nav a{color:#337ab7;text-decoration:none;margin-right:16px;font-size:.85em;display:inline-block;min-height:44px;line-height:44px}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+<input type="text" id="tourTitle" value="My Tour" placeholder="Tour name" style="background:none;border:none;color:#fff;font:inherit;font-weight:700;font-size:14px;width:120px;margin-right:auto" oninput="tourTitle=this.value;localStorage.setItem('pr-ed-title',this.value)">
+<button class="btn-dark active" id="btn-navigate" onclick="setMode('navigate')">Nav</button>
+<button class="btn-dark" id="btn-place" onclick="setMode('place')">+ Point</button>
+<button class="btn-blue" onclick="openTour()">Open</button>
+<button class="btn-green" onclick="saveTour()">Save</button>
+</div>
+
+<div id="map"></div>
+
+<!-- Waypoint editor panel -->
+<div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
+<div class="panel" id="panel">
+<div class="panel-header">
+<h2 id="panel-title">Waypoint</h2>
+<button class="panel-close" onclick="closePanel()">&times;</button>
+</div>
+<div id="panel-body"></div>
+</div>
+
+<!-- Library browser -->
+<div class="lib-overlay" id="lib-overlay" onclick="closeLibrary()"></div>
+<div class="lib-panel" id="lib-panel">
+<div class="panel-header">
+<h2>Tour Browser</h2>
+<button class="panel-close" onclick="closeLibrary()">&times;</button>
+</div>
+<div id="lib-body"></div>
+</div>
+
+<input type="file" id="open-file" accept=".pr,.zip" onchange="handleOpen(event)">
+<input type="file" id="audio-upload" accept="audio/*,.zip">
+<input type="file" id="lib-file" accept=".pr,.zip">
+
+<nav>
+<a href="/">Player</a>
+<a href="/identity">Identity</a>
+<a href="/recorder">Recorder</a>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// --- Identity redirect ---
+if (!localStorage.getItem('pr-identity')) window.location.href = '/identity';
+
+// --- State ---
+let mode = 'navigate';
+let waypoints = [];
+let selectedWp = null;
+let activeAudioSet = 'on'; // 'on' or 'off'
+let map, wpLayers = [], arrowLayers = [];
+let playingAudio = null;
+let currentLibTarget = null; // { wpIndex, set, track }
+let tourTitle = localStorage.getItem('pr-ed-title') || 'My Tour';
+
+const DB_NAME = 'pr-editor-audio';
+const DB_VERSION = 1;
+const STORE = 'blobs';
+const META_KEY = 'pr-editor-meta';
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function storeBlob(key, blob) {
+  const db = await openDB();
+  const tx = db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).put(blob, key);
+  return new Promise((r, e) => { tx.oncomplete = r; tx.onerror = () => e(tx.error); });
+}
+async function loadBlob(key) {
+  const db = await openDB();
+  const tx = db.transaction(STORE, 'readonly');
+  const req = tx.objectStore(STORE).get(key);
+  return new Promise((r, e) => { tx.oncomplete = () => r(req.result); tx.onerror = () => e(tx.error); });
+}
+async function deleteBlob(key) {
+  const db = await openDB();
+  const tx = db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).delete(key);
+  return new Promise((r, e) => { tx.oncomplete = r; tx.onerror = () => e(tx.error); });
+}
+async function clearBlobs() {
+  const db = await openDB();
+  const tx = db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).clear();
+  return new Promise((r, e) => { tx.oncomplete = r; tx.onerror = () => e(tx.error); });
+}
+
+function saveMeta() {
+  localStorage.setItem(META_KEY, JSON.stringify(waypoints));
+}
+function loadMeta() {
+  const raw = localStorage.getItem(META_KEY);
+  if (raw) { try { waypoints = JSON.parse(raw); } catch(e) {} }
+}
+
+// restore title
+document.getElementById('tourTitle').value = tourTitle;
+
+// --- Map ---
+map = L.map('map', { zoomControl: false }).setView([59.437, 24.745], 15);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OSM &copy; CARTO',
+  subdomains: 'abcd', maxZoom: 20
+}).addTo(map);
+
+map.on('click', function(e) {
+  if (mode !== 'place') return;
+  addWaypoint(e.latlng.lat, e.latlng.lng);
+});
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('btn-navigate').className = 'btn-dark' + (m === 'navigate' ? ' active' : '');
+  document.getElementById('btn-place').className = 'btn-dark' + (m === 'place' ? ' active' : '');
+}
+
+function generateId() {
+  return 'wp-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
+}
+
+function addWaypoint(lat, lng) {
+  const wp = {
+    id: generateId(),
+    name: 'Waypoint ' + (waypoints.length + 1),
+    trigger: { type: 'gps', coords: [lat, lng], radius_m: 20 },
+    requires: [],
+    same_audio: true,
+    tracks_on: { atmo: null, sfx: null, dialogue: null, vo: null },
+    tracks_off: { atmo: null, sfx: null, dialogue: null, vo: null },
+    _meta: {} // provenance metadata for tracks
+  };
+  waypoints.push(wp);
+  saveMeta();
+  renderMap();
+  openWaypointPanel(waypoints.length - 1);
+}
+
+function renderMap() {
+  // Clear existing layers
+  wpLayers.forEach(l => map.removeLayer(l));
+  arrowLayers.forEach(l => map.removeLayer(l));
+  wpLayers = [];
+  arrowLayers = [];
+
+  waypoints.forEach((wp, i) => {
+    const coords = wp.trigger.coords;
+    const hasPrereqs = wp.requires && wp.requires.length > 0;
+    const color = hasPrereqs ? '#337ab7' : '#5cb85c';
+
+    // Radius circle
+    const circle = L.circle(coords, {
+      radius: wp.trigger.radius_m || 20,
+      color: color, fillColor: color, fillOpacity: 0.15, weight: 2
+    }).addTo(map);
+
+    // Center marker
+    const marker = L.circleMarker(coords, {
+      radius: 8, color: color, fillColor: color, fillOpacity: 0.8, weight: 2
+    }).addTo(map);
+
+    // Label
+    const label = hasPrereqs ? `[${wp.requires.length}] ${wp.name}` : wp.name;
+    marker.bindTooltip(label, { permanent: true, direction: 'top', className: 'wp-tooltip', offset: [0, -10] });
+
+    marker.on('click', function() {
+      if (mode === 'navigate') openWaypointPanel(i);
+    });
+
+    wpLayers.push(circle, marker);
+
+    // Prerequisite arrows
+    if (wp.requires) {
+      wp.requires.forEach(reqId => {
+        const reqWp = waypoints.find(w => w.id === reqId);
+        if (reqWp) {
+          const arrow = L.polyline(
+            [reqWp.trigger.coords, coords],
+            { color: '#f0ad4e', weight: 2, dashArray: '6 4', opacity: 0.6 }
+          ).addTo(map);
+          arrowLayers.push(arrow);
+        }
+      });
+    }
+  });
+
+  // Inject tooltip styles
+  if (!document.getElementById('tooltip-style')) {
+    const s = document.createElement('style');
+    s.id = 'tooltip-style';
+    s.textContent = '.wp-tooltip{background:#1a1a1a!important;color:#eee!important;border:1px solid #333!important;border-radius:4px!important;font-size:.75em!important;padding:4px 8px!important}.wp-tooltip::before{border-top-color:#333!important}';
+    document.head.appendChild(s);
+  }
+}
+
+// --- Panel ---
+function openWaypointPanel(index) {
+  selectedWp = index;
+  activeAudioSet = 'on';
+  const wp = waypoints[index];
+
+  document.getElementById('panel-title').textContent = wp.name || 'Waypoint';
+  document.getElementById('panel-body').innerHTML = buildPanelHTML(wp, index);
+  document.getElementById('panel-overlay').style.display = 'block';
+  document.getElementById('panel').style.display = 'block';
+}
+
+function closePanel() {
+  document.getElementById('panel-overlay').style.display = 'none';
+  document.getElementById('panel').style.display = 'none';
+  stopAudioPreview();
+  selectedWp = null;
+}
+
+function buildPanelHTML(wp, index) {
+  const prereqOptions = waypoints
+    .filter((w, i) => i !== index && !(wp.requires || []).includes(w.id))
+    .map(w => `<option value="${w.id}">${w.name || w.id}</option>`)
+    .join('');
+
+  const prereqList = (wp.requires || []).map(id => {
+    const w = waypoints.find(x => x.id === id);
+    return `<li><span style="flex:1">${w ? w.name : id}</span><button class="btn-red" onclick="removePrereq(${index},'${id}')">Remove</button></li>`;
+  }).join('');
+
+  const showTabs = wp.requires && wp.requires.length > 0 && !wp.same_audio;
+
+  let html = `
+    <label>Name</label>
+    <input type="text" value="${wp.name || ''}" onchange="updateWpField(${index},'name',this.value)">
+
+    <div style="display:flex;gap:8px">
+      <div style="flex:1"><label>Latitude</label><input type="number" step="0.00001" value="${wp.trigger.coords[0]}" onchange="updateCoord(${index},0,parseFloat(this.value))"></div>
+      <div style="flex:1"><label>Longitude</label><input type="number" step="0.00001" value="${wp.trigger.coords[1]}" onchange="updateCoord(${index},1,parseFloat(this.value))"></div>
+    </div>
+
+    <label>Trigger Radius: <span id="radius-val">${wp.trigger.radius_m || 20}</span>m</label>
+    <input type="range" min="5" max="100" value="${wp.trigger.radius_m || 20}" oninput="document.getElementById('radius-val').textContent=this.value" onchange="updateRadius(${index},parseInt(this.value))">
+
+    <label>Prerequisites</label>
+    <div style="display:flex;gap:4px">
+      <select id="prereq-select" style="flex:1">${prereqOptions ? '<option value="">Add prerequisite...</option>' + prereqOptions : '<option value="">No other waypoints</option>'}</select>
+      <button class="btn-blue" onclick="addPrereq(${index})" style="padding:8px 12px">Add</button>
+    </div>
+    <ul class="prereq-list">${prereqList}</ul>
+  `;
+
+  if (wp.requires && wp.requires.length > 0) {
+    html += `
+      <div class="checkbox-row">
+        <input type="checkbox" id="same-audio" ${wp.same_audio ? 'checked' : ''} onchange="toggleSameAudio(${index},this.checked)">
+        <label for="same-audio" style="margin:0">Same audio for both states</label>
+      </div>
+    `;
+  }
+
+  if (showTabs) {
+    html += `
+      <div class="audio-tabs">
+        <button class="audio-tab on ${activeAudioSet === 'on' ? 'active-tab' : ''}" onclick="switchAudioSet('on',${index})">On-Track</button>
+        <button class="audio-tab off ${activeAudioSet === 'off' ? 'active-tab' : ''}" onclick="switchAudioSet('off',${index})">Off-Track</button>
+      </div>
+    `;
+  }
+
+  html += '<div style="margin-top:12px">' + buildTrackRows(wp, index) + '</div>';
+
+  html += `
+    <div class="delete-section">
+      <button class="btn-red" onclick="deleteWaypoint(${index})">Delete Waypoint</button>
+    </div>
+  `;
+
+  return html;
+}
+
+function buildTrackRows(wp, index) {
+  const set = activeAudioSet;
+  const tracks = set === 'on' ? wp.tracks_on : wp.tracks_off;
+  const trackTypes = ['atmo', 'sfx', 'dialogue', 'vo'];
+  const meta = wp._meta || {};
+
+  return trackTypes.map(type => {
+    const key = `${set}/${type}`;
+    const file = tracks[type];
+    const trackMeta = meta[key];
+
+    let metaDisplay = '';
+    if (trackMeta) {
+      const parts = [];
+      if (trackMeta.location) parts.push(`${trackMeta.location.lat.toFixed(4)}, ${trackMeta.location.lng.toFixed(4)}`);
+      if (trackMeta.recorded_at) parts.push(new Date(trackMeta.recorded_at).toLocaleDateString());
+      if (trackMeta.duration_s) parts.push(trackMeta.duration_s.toFixed(1) + 's');
+      if (trackMeta.recorder && trackMeta.recorder.pubkey) parts.push('key:' + trackMeta.recorder.pubkey.substring(0, 8) + '...');
+      if (trackMeta.tags && trackMeta.tags.length) parts.push(trackMeta.tags.join(', '));
+      metaDisplay = `<div class="track-meta">${parts.join(' | ')}</div>`;
+    }
+
+    return `
+      <div class="track-row">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="track-label">${type}</span>
+          <div style="flex:1">
+            <div class="track-file">${file || '—'}</div>
+            ${metaDisplay}
+          </div>
+          <div class="track-buttons">
+            <button class="btn-blue" onclick="uploadTrack(${index},'${set}','${type}')">Upload</button>
+            <button class="btn-amber" onclick="browseLibrary(${index},'${set}','${type}')">Lib</button>
+            ${file ? `<button class="btn-green" onclick="previewTrack(${index},'${set}','${type}')">Play</button>` : ''}
+            ${file ? `<button class="btn-red" onclick="removeTrack(${index},'${set}','${type}')">Del</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// --- Waypoint operations ---
+function updateWpField(index, field, value) {
+  waypoints[index][field] = value;
+  saveMeta(); renderMap();
+  document.getElementById('panel-title').textContent = value;
+}
+
+function updateCoord(index, pos, value) {
+  waypoints[index].trigger.coords[pos] = value;
+  saveMeta(); renderMap();
+}
+
+function updateRadius(index, value) {
+  waypoints[index].trigger.radius_m = value;
+  saveMeta(); renderMap();
+}
+
+function addPrereq(index) {
+  const sel = document.getElementById('prereq-select');
+  const val = sel.value;
+  if (!val) return;
+  if (!waypoints[index].requires) waypoints[index].requires = [];
+  if (!waypoints[index].requires.includes(val)) {
+    waypoints[index].requires.push(val);
+    saveMeta(); renderMap();
+    openWaypointPanel(index);
+  }
+}
+
+function removePrereq(index, id) {
+  waypoints[index].requires = (waypoints[index].requires || []).filter(x => x !== id);
+  saveMeta(); renderMap();
+  openWaypointPanel(index);
+}
+
+function toggleSameAudio(index, checked) {
+  waypoints[index].same_audio = checked;
+  saveMeta();
+  openWaypointPanel(index);
+}
+
+function switchAudioSet(set, index) {
+  activeAudioSet = set;
+  openWaypointPanel(index);
+}
+
+function deleteWaypoint(index) {
+  if (!confirm('Delete this waypoint?')) return;
+  const id = waypoints[index].id;
+  waypoints.splice(index, 1);
+  // Clean up prerequisites referencing this waypoint
+  waypoints.forEach(wp => {
+    wp.requires = (wp.requires || []).filter(x => x !== id);
+  });
+  saveMeta(); renderMap();
+  closePanel();
+}
+
+// --- Audio operations ---
+function uploadTrack(wpIndex, set, track) {
+  const input = document.getElementById('audio-upload');
+  input.onchange = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const key = `wp-${wpIndex}-${set}-${track}-${file.name}`;
+    const storePath = `track/${set}/${file.name}`;
+    await storeBlob(key, file);
+
+    const wp = waypoints[wpIndex];
+    const tracks = set === 'on' ? wp.tracks_on : wp.tracks_off;
+    tracks[track] = storePath;
+
+    // Store the blob key for retrieval
+    if (!wp._blobKeys) wp._blobKeys = {};
+    wp._blobKeys[`${set}/${track}`] = key;
+
+    saveMeta(); openWaypointPanel(wpIndex);
+    input.value = '';
+  };
+  input.click();
+}
+
+function removeTrack(wpIndex, set, track) {
+  const wp = waypoints[wpIndex];
+  const tracks = set === 'on' ? wp.tracks_on : wp.tracks_off;
+  const blobKey = wp._blobKeys && wp._blobKeys[`${set}/${track}`];
+  if (blobKey) deleteBlob(blobKey);
+  tracks[track] = null;
+  if (wp._meta) delete wp._meta[`${set}/${track}`];
+  saveMeta(); openWaypointPanel(wpIndex);
+}
+
+function stopAudioPreview() {
+  if (playingAudio) { playingAudio.pause(); playingAudio = null; }
+}
+
+async function previewTrack(wpIndex, set, track) {
+  stopAudioPreview();
+  const wp = waypoints[wpIndex];
+  const blobKey = wp._blobKeys && wp._blobKeys[`${set}/${track}`];
+  if (!blobKey) return;
+  const blob = await loadBlob(blobKey);
+  if (!blob) return;
+  const url = URL.createObjectURL(blob);
+  playingAudio = new Audio(url);
+  playingAudio.play();
+  playingAudio.onended = () => { URL.revokeObjectURL(url); playingAudio = null; };
+}
+
+// --- Library browser ---
+function browseLibrary(wpIndex, set, track) {
+  currentLibTarget = { wpIndex, set, track };
+  const input = document.getElementById('lib-file');
+  input.onchange = async function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const cartridgeFile = zip.file('cartridge.py');
+      if (!cartridgeFile) { alert('No cartridge.py found'); return; }
+      const text = await cartridgeFile.async('text');
+      const libWaypoints = extractPythonValueForLib(text, 'WAYPOINTS') || [];
+
+      let html = '<p style="color:#888;font-size:.85em;margin-bottom:12px">Select a track to import:</p>';
+
+      for (let i = 0; i < libWaypoints.length; i++) {
+        const lw = libWaypoints[i];
+        html += `<div class="lib-wp-item"><strong>${lw.name || lw.id}</strong></div>`;
+        for (const setType of ['on', 'off']) {
+          const tracks = setType === 'on' ? lw.tracks_on : lw.tracks_off;
+          if (!tracks) continue;
+          for (const [ttype, tpath] of Object.entries(tracks)) {
+            if (!tpath) continue;
+            html += `<div class="lib-track-item" onclick="importFromLib(this)" data-path="${tpath}" data-set="${setType}" data-track="${ttype}">
+              <span style="color:#5cb85c">${setType.toUpperCase()}</span>
+              <span style="color:#f0ad4e;text-transform:uppercase">${ttype}</span>
+              <span style="flex:1;color:#aaa">${tpath}</span>
+            </div>`;
+          }
+        }
+      }
+
+      document.getElementById('lib-body').innerHTML = html;
+      document.getElementById('lib-overlay').style.display = 'block';
+      document.getElementById('lib-panel').style.display = 'block';
+
+      // Store zip reference for import
+      window._libZip = zip;
+    } catch (e) {
+      alert('Error loading tour: ' + e.message);
+    }
+    input.value = '';
+  };
+  input.click();
+}
+
+async function importFromLib(el) {
+  const path = el.dataset.path;
+  if (!window._libZip || !currentLibTarget) return;
+
+  const zipFile = window._libZip.file(path);
+  if (!zipFile) { alert('File not found in archive: ' + path); return; }
+
+  const blob = await zipFile.async('blob');
+  const { wpIndex, set, track } = currentLibTarget;
+  const wp = waypoints[wpIndex];
+  const key = `wp-${wpIndex}-${set}-${track}-lib-${path.split('/').pop()}`;
+  await storeBlob(key, blob);
+
+  const tracks = set === 'on' ? wp.tracks_on : wp.tracks_off;
+  tracks[track] = path;
+  if (!wp._blobKeys) wp._blobKeys = {};
+  wp._blobKeys[`${set}/${track}`] = key;
+
+  // Try to load sidecar JSON
+  const sidecarPath = path.replace(/\.[^.]+$/, '.json');
+  const sidecarFile = window._libZip.file(sidecarPath);
+  if (sidecarFile) {
+    try {
+      const sidecarText = await sidecarFile.async('text');
+      const sidecar = JSON.parse(sidecarText);
+      if (!wp._meta) wp._meta = {};
+      wp._meta[`${set}/${track}`] = sidecar;
+    } catch(e) {}
+  }
+
+  saveMeta();
+  closeLibrary();
+  openWaypointPanel(wpIndex);
+}
+
+function closeLibrary() {
+  document.getElementById('lib-overlay').style.display = 'none';
+  document.getElementById('lib-panel').style.display = 'none';
+  window._libZip = null;
+}
+
+// --- Python parser (same as index.html) ---
+function extractPythonValueForLib(text, varName) {
+  const pattern = new RegExp('(?:^|\\n)' + varName + '\\s*=\\s*', 'g');
+  const match = pattern.exec(text);
+  if (!match) return null;
+  let start = match.index + match[0].length;
+  const firstChar = text[start];
+
+  if (firstChar === '"' || firstChar === "'") {
+    let end = start + 1;
+    while (end < text.length && text[end] !== firstChar) { if (text[end] === '\\') end++; end++; }
+    return text.substring(start + 1, end);
+  }
+  if (firstChar !== '{' && firstChar !== '[') {
+    if (text.substring(start, start + 4) === 'True') return true;
+    if (text.substring(start, start + 5) === 'False') return false;
+    if (text.substring(start, start + 4) === 'None') return null;
+    const nm = text.substring(start).match(/^[\d.\-eE]+/);
+    if (nm) return parseFloat(nm[0]);
+    return null;
+  }
+
+  let depth = 0, i = start, inStr = false, strChar = '';
+  const openers = new Set(['{', '[', '(']);
+  const closers = new Set(['}', ']', ')']);
+  while (i < text.length) {
+    const c = text[i];
+    if (inStr) { if (c === '\\') { i += 2; continue; } if (c === strChar) inStr = false; }
+    else {
+      if (c === '#') { while (i < text.length && text[i] !== '\n') i++; continue; }
+      if (c === '"' || c === "'") { inStr = true; strChar = c; }
+      else if (openers.has(c)) depth++;
+      else if (closers.has(c)) { depth--; if (depth === 0) {
+        const raw = text.substring(start, i + 1);
+        let json = raw.replace(/#[^\n]*/g, '').replace(/True/g, 'true').replace(/False/g, 'false').replace(/None/g, 'null').replace(/'/g, '"').replace(/,\s*([\]})]])/g, '$1');
+        try { return JSON.parse(json); } catch(e) { return null; }
+      }}
+    }
+    i++;
+  }
+  return null;
+}
+
+// --- Save ---
+async function sha256hex(data) {
+  const buf = await crypto.subtle.digest('SHA-256', typeof data === 'string' ? new TextEncoder().encode(data) : data);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function saveTour() {
+  if (waypoints.length === 0) { alert('Add at least one waypoint first.'); return; }
+
+  const identity = JSON.parse(localStorage.getItem('pr-identity') || '{}');
+  const zip = new JSZip();
+  const manifestFiles = {};
+
+  // Collect contributors from track metadata
+  const contributorSet = new Set();
+  if (identity.handle) contributorSet.add(identity.handle);
+
+  // Add audio files
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    for (const setType of ['on', 'off']) {
+      const tracks = setType === 'on' ? wp.tracks_on : wp.tracks_off;
+      if (!tracks) continue;
+      for (const [ttype, tpath] of Object.entries(tracks)) {
+        if (!tpath) continue;
+        const blobKey = wp._blobKeys && wp._blobKeys[`${setType}/${ttype}`];
+        if (!blobKey) continue;
+        const blob = await loadBlob(blobKey);
+        if (!blob) continue;
+        const arrayBuf = await blob.arrayBuffer();
+        zip.file(tpath, arrayBuf);
+
+        try {
+          const hash = await sha256hex(arrayBuf);
+          manifestFiles[tpath] = { sha256: hash, size: arrayBuf.byteLength };
+        } catch(e) {
+          // crypto.subtle may fail on plain HTTP
+          manifestFiles[tpath] = { sha256: 'unavailable', size: arrayBuf.byteLength };
+        }
+
+        // Add sidecar JSON if provenance exists
+        const meta = wp._meta && wp._meta[`${setType}/${ttype}`];
+        if (meta) {
+          const sidecarPath = tpath.replace(/\.[^.]+$/, '.json');
+          zip.file(sidecarPath, JSON.stringify(meta, null, 2));
+          if (meta.recorder && meta.recorder.pubkey) {
+            contributorSet.add(meta.recorder.pubkey.substring(0, 8) + '...');
+          }
+        }
+      }
+    }
+  }
+
+  // Build WAYPOINTS for cartridge.py (strip internal fields)
+  const cleanWaypoints = waypoints.map(wp => ({
+    id: wp.id,
+    name: wp.name,
+    trigger: wp.trigger,
+    requires: wp.requires || [],
+    same_audio: wp.same_audio !== false,
+    tracks_on: wp.tracks_on,
+    tracks_off: wp.tracks_off
+  }));
+
+  const tourDef = {
+    id: tourTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'tour-' + Date.now().toString(36),
+    title: tourTitle || 'Untitled Tour',
+    skin: 'default',
+    global_atmo: null
+  };
+
+  const contributors = Array.from(contributorSet);
+
+  const cartridge = `"""Pavement Radio Tour Cartridge"""
+
+# --- identity ---
+AUTHOR = "${identity.handle || 'anonymous'}"
+PUBKEY = "${identity.pubkey || ''}"
+SIGNATURE = ""
+SIGNED_AT = "${new Date().toISOString()}"
+MANIFEST_HASH = ""
+
+# --- contributors ---
+CONTRIBUTORS = ${JSON.stringify(contributors)}
+
+# --- tour definition ---
+TOUR = ${JSON.stringify(tourDef, null, 4)}
+
+WAYPOINTS = ${JSON.stringify(cleanWaypoints, null, 4)}
+
+REVENUE_SPLIT = {
+    "tour_maker": 0.70,
+    "platform": 0.20,
+    "settlement": 0.10
+}
+
+# --- self-verification ---
+if __name__ == "__main__":
+    import hashlib, json, os, sys
+    def verify():
+        cart_dir = os.path.dirname(os.path.abspath(__file__))
+        manifest_path = os.path.join(cart_dir, "manifest.json")
+        if not os.path.exists(manifest_path):
+            print("No manifest.json found.")
+            return False
+        manifest_bytes = open(manifest_path, "rb").read()
+        if MANIFEST_HASH and hashlib.sha256(manifest_bytes).hexdigest() != MANIFEST_HASH:
+            print("FAIL: manifest.json modified since signing.")
+            return False
+        manifest = json.loads(manifest_bytes)
+        for filepath, entry in manifest["files"].items():
+            full_path = os.path.join(cart_dir, filepath)
+            if not os.path.exists(full_path):
+                print(f"FAIL: missing {filepath}")
+                return False
+            data = open(full_path, "rb").read()
+            if len(data) != entry["size"]:
+                print(f"FAIL: size mismatch {filepath}")
+                return False
+            if entry["sha256"] != "unavailable" and hashlib.sha256(data).hexdigest() != entry["sha256"]:
+                print(f"FAIL: checksum mismatch {filepath}")
+                return False
+        print(f"OK: {len(manifest['files'])} files verified.")
+        print(f"    tour: {TOUR['title']}")
+        return True
+    sys.exit(0 if verify() else 1)
+`;
+
+  zip.file('cartridge.py', cartridge);
+
+  const manifest = {
+    version: 1,
+    tour_id: tourDef.id,
+    created_at: new Date().toISOString(),
+    files: manifestFiles
+  };
+  zip.file('manifest.json', JSON.stringify(manifest, null, 2));
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (tourDef.title || 'tour').replace(/[^a-z0-9]/gi, '-').toLowerCase() + '.pr';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --- Open ---
+function openTour() {
+  document.getElementById('open-file').click();
+}
+
+async function handleOpen(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    const cartridgeFile = zip.file('cartridge.py');
+    if (!cartridgeFile) { alert('No cartridge.py in archive'); return; }
+
+    const text = await cartridgeFile.async('text');
+    const loadedTour = extractPythonValueForLib(text, 'TOUR');
+    if (loadedTour?.title) {
+      tourTitle = loadedTour.title;
+      document.getElementById('tourTitle').value = tourTitle;
+      localStorage.setItem('pr-ed-title', tourTitle);
+    }
+    const loadedWaypoints = extractPythonValueForLib(text, 'WAYPOINTS') || [];
+
+    await clearBlobs();
+    waypoints = [];
+
+    for (let i = 0; i < loadedWaypoints.length; i++) {
+      const lw = loadedWaypoints[i];
+      lw._meta = {};
+      lw._blobKeys = {};
+
+      for (const setType of ['on', 'off']) {
+        const tracks = setType === 'on' ? lw.tracks_on : lw.tracks_off;
+        if (!tracks) continue;
+        for (const [ttype, tpath] of Object.entries(tracks)) {
+          if (!tpath) continue;
+          const zipEntry = zip.file(tpath);
+          if (zipEntry) {
+            const blob = await zipEntry.async('blob');
+            const key = `wp-${i}-${setType}-${ttype}-${tpath.split('/').pop()}`;
+            await storeBlob(key, blob);
+            lw._blobKeys[`${setType}/${ttype}`] = key;
+          }
+          // Load sidecar
+          const sidecarPath = tpath.replace(/\.[^.]+$/, '.json');
+          const sidecarEntry = zip.file(sidecarPath);
+          if (sidecarEntry) {
+            try {
+              const sidecarText = await sidecarEntry.async('text');
+              lw._meta[`${setType}/${ttype}`] = JSON.parse(sidecarText);
+            } catch(e) {}
+          }
+        }
+      }
+
+      waypoints.push(lw);
+    }
+
+    saveMeta();
+    renderMap();
+
+    // Fit map to waypoints
+    if (waypoints.length > 0) {
+      const bounds = L.latLngBounds(waypoints.map(w => w.trigger.coords));
+      map.fitBounds(bounds, { padding: [40, 40] });
+    }
+  } catch (e) {
+    alert('Error opening tour: ' + e.message);
+  }
+  event.target.value = '';
+}
+
+// --- Init ---
+loadMeta();
+renderMap();
+if (waypoints.length > 0) {
+  const bounds = L.latLngBounds(waypoints.map(w => w.trigger.coords));
+  map.fitBounds(bounds, { padding: [40, 40] });
+}
+</script>
+<nav class="bottom-nav">
+  <a href="/"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Player</a>
+  <a href="/editor" class="active"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Editor</a>
+  <a href="/recorder"><svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zm-5 9a1 1 0 01-1-1h2a1 1 0 01-1 1zm-1 0v2h2v-2h-2z"/></svg>Recorder</a>
+  <a href="/identity"><svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Identity</a>
+</nav>
+</body>
+</html>
