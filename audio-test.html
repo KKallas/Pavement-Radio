@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Subsystem Test</title>
+<style>
+body{background:#111;color:#eee;font-family:-apple-system,sans-serif;padding:16px;max-width:500px;margin:0 auto}
+h1{font-size:1.2em;margin-bottom:4px}
+.sub{color:#888;font-size:.8em;margin-bottom:20px}
+.test{background:#1a1a1a;border-radius:8px;padding:16px;margin-bottom:12px}
+.test h2{font-size:.95em;color:#5cb85c;margin:0 0 4px}
+.test p{font-size:.8em;color:#888;margin:0 0 12px}
+button{min-height:44px;padding:10px 20px;border:none;border-radius:6px;font-size:.95em;cursor:pointer;font-weight:600;margin-right:6px;margin-bottom:6px}
+.btn-green{background:#5cb85c;color:#fff}
+.btn-blue{background:#337ab7;color:#fff}
+.btn-red{background:#d9534f;color:#fff}
+#log{background:#0a0a0a;border-radius:8px;padding:12px;font-family:"SF Mono",Monaco,monospace;font-size:.75em;line-height:1.6;max-height:300px;overflow-y:auto;white-space:pre-wrap;color:#aaa}
+.pass{color:#5cb85c}
+.fail{color:#d9534f}
+.info{color:#f0ad4e}
+</style>
+</head>
+<body>
+
+<h1>Audio Subsystem Test</h1>
+<p class="sub">Run each test in order on iOS. Report which step fails.</p>
+
+<div class="test">
+<h2>Test 1 — AudioContext</h2>
+<p>Can we create an AudioContext and resume it?</p>
+<button class="btn-green" onclick="test1()">Run</button>
+</div>
+
+<div class="test">
+<h2>Test 2 — Generated tone</h2>
+<p>Play a 440Hz beep using OscillatorNode. No recording, no decoding.</p>
+<button class="btn-green" onclick="test2()">Run</button>
+</div>
+
+<div class="test">
+<h2>Test 3 — Generated buffer</h2>
+<p>Create an AudioBuffer in code (sine wave), play via BufferSource.</p>
+<button class="btn-green" onclick="test3()">Run</button>
+</div>
+
+<div class="test">
+<h2>Test 4 — Record + play via &lt;audio&gt; element</h2>
+<p>Record 2s from mic, play back using a plain &lt;audio&gt; tag (no Web Audio).</p>
+<button class="btn-blue" onclick="test4()">Record 2s</button>
+<audio id="test4-audio" controls style="display:none;width:100%;margin-top:8px"></audio>
+</div>
+
+<div class="test">
+<h2>Test 5 — Record + decode + BufferSource</h2>
+<p>Record 2s, decode with fresh AudioContext, play via BufferSource. This is what recorder.html does.</p>
+<button class="btn-blue" onclick="test5()">Record 2s</button>
+</div>
+
+<div class="test">
+<h2>Test 6 — Record + decode (same ctx) + BufferSource</h2>
+<p>Same as test 5 but reuses the recording AudioContext for playback (no close/reopen).</p>
+<button class="btn-blue" onclick="test6()">Record 2s</button>
+</div>
+
+<div class="test">
+<h2>Test 7 — Generated buffer via &lt;audio&gt; element</h2>
+<p>Create AudioBuffer in code, encode to WAV, play via &lt;audio&gt; tag. If this works, this is the fix.</p>
+<button class="btn-green" onclick="test7()">Run</button>
+<audio id="test7-audio" controls style="display:none;width:100%;margin-top:8px"></audio>
+</div>
+
+<div class="test">
+<h2>Test 8 — Record + decode + WAV + &lt;audio&gt; element</h2>
+<p>Record 2s, decode to AudioBuffer, encode to WAV, play via &lt;audio&gt;. Full pipeline, no Web Audio playback.</p>
+<button class="btn-blue" onclick="test8()">Record 2s</button>
+<audio id="test8-audio" controls style="display:none;width:100%;margin-top:8px"></audio>
+</div>
+
+<div id="log"></div>
+
+<script>
+let ctx = null;
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  const span = document.createElement('span');
+  span.className = cls || '';
+  span.textContent = msg + '\n';
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+}
+
+// TEST 1: AudioContext creation + resume
+function test1() {
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    log('AudioContext created, state: ' + ctx.state, 'info');
+    log('sampleRate: ' + ctx.sampleRate, 'info');
+    ctx.resume().then(() => {
+      log('resume() resolved, state: ' + ctx.state, ctx.state === 'running' ? 'pass' : 'fail');
+    }).catch(e => log('resume() rejected: ' + e.message, 'fail'));
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+// TEST 2: Oscillator (no buffer, no recording)
+function test2() {
+  try {
+    if (!ctx || ctx.state === 'closed') ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx.resume();
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 440;
+    osc.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.5);
+    log('Oscillator started — you should hear a beep', 'info');
+    osc.onended = () => log('Oscillator ended', 'pass');
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+// TEST 3: Code-generated AudioBuffer playback
+function test3() {
+  try {
+    if (!ctx || ctx.state === 'closed') ctx = new (window.AudioContext || window.webkitAudioContext)();
+    ctx.resume();
+    const sr = ctx.sampleRate;
+    const buf = ctx.createBuffer(1, sr, sr); // 1 second
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Math.sin(2 * Math.PI * 440 * i / sr) * 0.3;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start();
+    log('BufferSource started — you should hear a 1s tone', 'info');
+    src.onended = () => log('BufferSource ended', 'pass');
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+// TEST 4: Record + <audio> element playback (no Web Audio for playback)
+async function test4() {
+  try {
+    log('Requesting mic...', 'info');
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    log('Mic granted. Recording 2s...', 'info');
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      const mimeType = rec.mimeType || 'audio/webm';
+      log('MediaRecorder mimeType: ' + mimeType, 'info');
+      const blob = new Blob(chunks, { type: mimeType });
+      log('Blob size: ' + blob.size + ' bytes', 'info');
+      const url = URL.createObjectURL(blob);
+      const audio = document.getElementById('test4-audio');
+      audio.src = url;
+      audio.style.display = 'block';
+      audio.play().then(() => {
+        log('audio.play() resolved — you should hear playback', 'pass');
+      }).catch(e => log('audio.play() rejected: ' + e.message, 'fail'));
+    };
+    rec.start();
+    setTimeout(() => rec.stop(), 2000);
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+// TEST 5: Record + fresh context decode + BufferSource
+async function test5() {
+  try {
+    log('Requesting mic...', 'info');
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    log('Mic granted. Recording 2s...', 'info');
+
+    // Use recording context for level meter only
+    const recCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const mimeType = rec.mimeType || 'audio/webm';
+      log('mimeType: ' + mimeType, 'info');
+      const blob = new Blob(chunks, { type: mimeType });
+      log('Blob size: ' + blob.size, 'info');
+
+      // Close recording context
+      recCtx.close();
+      log('Recording context closed', 'info');
+
+      // Fresh context for decode + playback
+      const playCtx = new (window.AudioContext || window.webkitAudioContext)();
+      log('Fresh playback context created, state: ' + playCtx.state, 'info');
+
+      const arrayBuf = await blob.arrayBuffer();
+      log('ArrayBuffer size: ' + arrayBuf.byteLength, 'info');
+
+      try {
+        const audioBuf = await playCtx.decodeAudioData(arrayBuf);
+        log('Decoded: ' + audioBuf.duration.toFixed(2) + 's, ' + audioBuf.numberOfChannels + 'ch, ' + audioBuf.sampleRate + 'Hz', 'pass');
+        log('Max sample: ' + maxSample(audioBuf), 'info');
+
+        // Playback needs user gesture — add a button
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-top:8px';
+        const btn = document.createElement('button');
+        btn.className = 'btn-green';
+        btn.textContent = 'Play decoded audio';
+        btn.onclick = () => {
+          playCtx.resume();
+          const src = playCtx.createBufferSource();
+          src.buffer = audioBuf;
+          src.connect(playCtx.destination);
+          src.start();
+          log('BufferSource started on fresh ctx', 'info');
+          src.onended = () => log('Playback ended', 'pass');
+        };
+        div.appendChild(btn);
+        document.querySelectorAll('.test')[4].appendChild(div);
+      } catch(e) {
+        log('decodeAudioData FAILED: ' + e.message, 'fail');
+      }
+    };
+    rec.start();
+    setTimeout(() => rec.stop(), 2000);
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+// TEST 6: Record + same context decode + BufferSource
+async function test6() {
+  try {
+    log('Requesting mic...', 'info');
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    log('Mic granted. Recording 2s...', 'info');
+
+    const sameCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = sameCtx.createMediaStreamSource(stream);
+    // connect to analyser like recorder.html does
+    const analyser = sameCtx.createAnalyser();
+    src.connect(analyser);
+
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const mimeType = rec.mimeType || 'audio/webm';
+      log('mimeType: ' + mimeType, 'info');
+      const blob = new Blob(chunks, { type: mimeType });
+      log('Blob size: ' + blob.size, 'info');
+
+      // Do NOT close context — reuse it
+      const arrayBuf = await blob.arrayBuffer();
+      try {
+        const audioBuf = await sameCtx.decodeAudioData(arrayBuf);
+        log('Decoded (same ctx): ' + audioBuf.duration.toFixed(2) + 's, ' + audioBuf.sampleRate + 'Hz', 'pass');
+        log('Max sample: ' + maxSample(audioBuf), 'info');
+
+        const div = document.createElement('div');
+        div.style.cssText = 'margin-top:8px';
+        const btn = document.createElement('button');
+        btn.className = 'btn-green';
+        btn.textContent = 'Play (same ctx)';
+        btn.onclick = () => {
+          sameCtx.resume();
+          const s = sameCtx.createBufferSource();
+          s.buffer = audioBuf;
+          s.connect(sameCtx.destination);
+          s.start();
+          log('BufferSource started on same ctx', 'info');
+          s.onended = () => log('Playback ended', 'pass');
+        };
+        div.appendChild(btn);
+        document.querySelectorAll('.test')[5].appendChild(div);
+      } catch(e) {
+        log('decodeAudioData FAILED: ' + e.message, 'fail');
+      }
+    };
+    rec.start();
+    setTimeout(() => rec.stop(), 2000);
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+// WAV encoder (same as recorder.html)
+function bufferToWav(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const sr = buffer.sampleRate;
+  const len = buffer.length;
+  const bps = 2;
+  const blockAlign = numCh * bps;
+  const dataSize = len * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(ab);
+  function writeStr(o, s) { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); }
+  writeStr(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); writeStr(8, 'WAVE');
+  writeStr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, numCh, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * blockAlign, true); v.setUint16(32, blockAlign, true);
+  v.setUint16(34, 16, true); writeStr(36, 'data'); v.setUint32(40, dataSize, true);
+  let offset = 44;
+  for (let i = 0; i < len; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+      v.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+// TEST 7: Generated buffer → WAV → <audio> element
+function test7() {
+  try {
+    const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const sr = tmpCtx.sampleRate;
+    const buf = tmpCtx.createBuffer(1, sr, sr);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Math.sin(2 * Math.PI * 440 * i / sr) * 0.3;
+    }
+    tmpCtx.close();
+    const wavBlob = bufferToWav(buf);
+    log('WAV blob: ' + wavBlob.size + ' bytes', 'info');
+    const url = URL.createObjectURL(wavBlob);
+    const audio = document.getElementById('test7-audio');
+    audio.src = url;
+    audio.style.display = 'block';
+    audio.play().then(() => {
+      log('Test 7 playing — you should hear a 1s tone', 'pass');
+    }).catch(e => log('Test 7 play() rejected: ' + e.message, 'fail'));
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+// TEST 8: Record → decode → WAV → <audio> element
+async function test8() {
+  try {
+    log('Requesting mic...', 'info');
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    log('Mic granted. Recording 2s...', 'info');
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const mimeType = rec.mimeType || 'audio/webm';
+      log('mimeType: ' + mimeType, 'info');
+      const blob = new Blob(chunks, { type: mimeType });
+      log('Blob size: ' + blob.size, 'info');
+      const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const arrayBuf = await blob.arrayBuffer();
+      try {
+        const audioBuf = await tmpCtx.decodeAudioData(arrayBuf);
+        log('Decoded: ' + audioBuf.duration.toFixed(2) + 's, ' + audioBuf.numberOfChannels + 'ch', 'pass');
+        log('Max sample: ' + maxSample(audioBuf), 'info');
+        tmpCtx.close();
+        const wavBlob = bufferToWav(audioBuf);
+        log('WAV blob: ' + wavBlob.size + ' bytes', 'info');
+        const url = URL.createObjectURL(wavBlob);
+        const audio = document.getElementById('test8-audio');
+        audio.src = url;
+        audio.style.display = 'block';
+        audio.play().then(() => {
+          log('Test 8 playing — you should hear your recording', 'pass');
+        }).catch(e => log('Test 8 play() rejected: ' + e.message, 'fail'));
+      } catch(e) {
+        log('decodeAudioData FAILED: ' + e.message, 'fail');
+      }
+    };
+    rec.start();
+    setTimeout(() => rec.stop(), 2000);
+  } catch(e) {
+    log('FAIL: ' + e.message, 'fail');
+  }
+}
+
+function maxSample(buf) {
+  let max = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      const abs = Math.abs(data[i]);
+      if (abs > max) max = abs;
+    }
+  }
+  return max.toFixed(4);
+}
+</script>
+</body>
+</html>

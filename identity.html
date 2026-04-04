@@ -91,6 +91,8 @@ nav a:hover{text-decoration:underline}
 <div class="card">
 <h2>Danger Zone</h2>
 <button class="btn-red" onclick="window.deleteIdentity()">Delete Identity</button>
+<button class="btn-red" onclick="window.nukeAllData()" style="margin-top:8px">Reset Everything</button>
+<p style="font-size:.75em;color:#555;margin-top:6px">Deletes all IndexedDB databases, localStorage, and reloads. Use when old data conflicts with new code.</p>
 </div>
 </div>
 
@@ -123,11 +125,35 @@ function showStatus(msg, type) {
   el.className = 'status ' + (type || '');
   setTimeout(() => { el.textContent = ''; el.className = 'status'; }, 4000);
 }
+window.nukeAllData = async function() {
+  if (!confirm('This will delete ALL Pavement Radio data:\n\n- Identity & keys\n- Recorder library\n- Editor projects\n- Player cache\n- All localStorage\n\nAre you sure?')) return;
+  const dbs = ['pr-identity-keys', 'pr-editor-audio', 'pr-recorder', 'pr-player-audio'];
+  for (const name of dbs) {
+    try { await new Promise((res, rej) => { const r = indexedDB.deleteDatabase(name); r.onsuccess = res; r.onerror = rej; r.onblocked = res; }); } catch(e) {}
+  }
+  if (indexedDB.databases) {
+    try {
+      const allDbs = await indexedDB.databases();
+      for (const db of allDbs) {
+        if (db.name && db.name.startsWith('pr-')) {
+          try { await new Promise((res, rej) => { const r = indexedDB.deleteDatabase(db.name); r.onsuccess = res; r.onerror = rej; r.onblocked = res; }); } catch(e) {}
+        }
+      }
+    } catch(e) {}
+  }
+  localStorage.clear();
+  alert('All data deleted. Reloading...');
+  location.reload();
+};
+
 refreshUI();
 </script>
 <script type="module">
-import { ed25519 } from 'https://esm.sh/@noble/ed25519@2.2.3';
+import * as ed from 'https://esm.sh/@noble/ed25519@2.2.3';
 import { sha512 } from 'https://esm.sh/@noble/hashes@1.7.1/sha512';
+
+// The library exports vary by version — find the right object
+const ed25519 = ed.ed25519 || ed;
 
 // Provide sha512Sync so ed25519 works synchronously (no crypto.subtle needed)
 ed25519.etc.sha512Sync = (...msgs) => {

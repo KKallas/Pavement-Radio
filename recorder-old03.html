@@ -112,7 +112,6 @@ let selectionStart = null;
 let selectionEnd = null;
 let isPlaying = false;
 let playSource = null;
-let playbackAudio = null; // <audio> element used for playback (iOS compat)
 let loopFadeMode = false;
 let loopFadeDur = 2.0;
 let mixMode = false;
@@ -1073,7 +1072,21 @@ function mixPreviewSource() {
   stopPlayback();
   const buf = buildMixSrcLooped();
   if (!buf) return;
-  playViaAudioEl(buf, { loop: true });
+  ensureCtx();
+  audioCtx.resume();
+  playSource = audioCtx.createBufferSource();
+  playSource.buffer = buf;
+  playSource.loop = true;
+  playSource.connect(audioCtx.destination);
+  playSource.start();
+  isPlaying = true;
+  playbackStartCtxTime = audioCtx.currentTime;
+  playbackOffset = 0;
+  playbackDuration = buf.duration;
+  const ph = document.getElementById('playhead');
+  if (ph) ph.style.display = 'block';
+  animatePlayhead();
+  playSource.onended = () => { isPlaying = false; stopPlayhead(); };
 }
 
 function mixGoStep2() {
@@ -1158,9 +1171,22 @@ function mixPreviewResult() {
   stopPlayback();
   const buf = buildMixPreviewBuffer();
   if (!buf) { alert('Select a region on the waveform first.'); return; }
+  ensureCtx();
   const s = Math.min(selectionStart, selectionEnd);
   const offset = Math.max(0, s * buf.duration - 1);
-  playViaAudioEl(buf, { startTime: offset });
+  audioCtx.resume();
+  playSource = audioCtx.createBufferSource();
+  playSource.buffer = buf;
+  playSource.connect(audioCtx.destination);
+  playSource.start(0, offset);
+  isPlaying = true;
+  playbackStartCtxTime = audioCtx.currentTime;
+  playbackOffset = offset;
+  playbackDuration = buf.duration;
+  const ph = document.getElementById('playhead');
+  if (ph) ph.style.display = 'block';
+  animatePlayhead();
+  playSource.onended = () => { isPlaying = false; stopPlayhead(); };
 }
 
 function commitMix() {
@@ -1192,83 +1218,62 @@ function ensureCtx() {
   return audioCtx;
 }
 
-// --- Playback (uses <audio> element for iOS compatibility) ---
-
-// Central playback: encode AudioBuffer to WAV, play via <audio> element.
-// Options: { loop, startTime, endTime }
-function playViaAudioEl(buf, opts) {
-  opts = opts || {};
-  stopPlayback();
-
-  // If we need a sub-region, slice the buffer
-  let playBuf = buf;
-  if (opts.startTime != null || opts.endTime != null) {
-    const sr = buf.sampleRate;
-    const startSample = Math.floor((opts.startTime || 0) * sr);
-    const endSample = opts.endTime != null ? Math.floor(opts.endTime * sr) : buf.length;
-    const len = endSample - startSample;
-    if (len > 0) {
-      ensureCtx();
-      playBuf = audioCtx.createBuffer(buf.numberOfChannels, len, sr);
-      for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-        playBuf.getChannelData(ch).set(buf.getChannelData(ch).subarray(startSample, endSample));
-      }
-    }
-  }
-
-  const wavBlob = bufferToWav(playBuf);
-  const url = URL.createObjectURL(wavBlob);
-
-  playbackAudio = new Audio(url);
-  playbackAudio.loop = !!opts.loop;
-
-  playbackDuration = playBuf.duration;
-  playbackOffset = 0;
-
-  const ph = document.getElementById('playhead');
-  if (ph) ph.style.display = 'block';
-
-  playbackAudio.onplay = () => {
-    isPlaying = true;
-    animatePlayhead();
-    const btn = document.getElementById(loopFadeMode ? 'play-btn-lf' : 'play-btn');
-    if (btn) btn.textContent = 'Stop';
-  };
-  playbackAudio.onended = () => {
-    isPlaying = false;
-    stopPlayhead();
-    URL.revokeObjectURL(url);
-    playbackAudio = null;
-    const btn = document.getElementById('play-btn') || document.getElementById('play-btn-lf');
-    if (btn) btn.textContent = loopFadeMode ? 'Play Preview' : 'Play';
-  };
-  playbackAudio.play().catch(() => {});
-}
-
+// --- Playback ---
 function togglePlayback() {
   if (isPlaying) { stopPlayback(); return; }
-  if (!audioBuffer) return;
+  // iOS requires context creation + resume + start all within the user gesture
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  audioCtx.resume();
+  startPlayback();
+}
 
+function startPlayback() {
+  if (!audioBuffer || !audioCtx) return;
+
+  // in loop fade mode, play the preview buffer with looping
   const buf = loopFadeMode ? (buildLoopFadePreviewBuffer() || audioBuffer) : audioBuffer;
 
+  playSource = audioCtx.createBufferSource();
+  playSource.buffer = buf;
+  if (loopFadeMode) playSource.loop = true;
+  playSource.connect(audioCtx.destination);
+
+  let offset = 0, dur = undefined;
   if (!loopFadeMode && selectionStart !== null && selectionEnd !== null) {
     const s = Math.min(selectionStart, selectionEnd);
     const e = Math.max(selectionStart, selectionEnd);
-    playViaAudioEl(buf, {
-      startTime: s * audioBuffer.duration,
-      endTime: e * audioBuffer.duration
-    });
-  } else {
-    playViaAudioEl(buf, { loop: loopFadeMode });
+    offset = s * audioBuffer.duration;
+    dur = (e - s) * audioBuffer.duration;
   }
+
+  if (dur !== undefined) playSource.start(0, offset, dur);
+  else playSource.start(0, offset);
+  isPlaying = true;
+
+  // playhead animation
+  playbackStartCtxTime = audioCtx.currentTime;
+  playbackOffset = offset;
+  playbackDuration = buf.duration;
+  const ph = document.getElementById('playhead');
+  if (ph) ph.style.display = 'block';
+  animatePlayhead();
+
+  playSource.onended = () => {
+    isPlaying = false;
+    stopPlayhead();
+    const btn = document.getElementById('play-btn') || document.getElementById('play-btn-lf');
+    if (btn) btn.textContent = loopFadeMode ? 'Play Preview' : 'Play';
+  };
+  const btn = document.getElementById(loopFadeMode ? 'play-btn-lf' : 'play-btn');
+  if (btn) btn.textContent = 'Stop';
 }
 
 function animatePlayhead() {
-  if (!isPlaying || !playbackAudio) return;
-  const elapsed = playbackAudio.currentTime;
-  const pos = playbackAudio.loop
-    ? (elapsed % playbackDuration) / playbackDuration
-    : elapsed / playbackDuration;
+  if (!isPlaying || !audioCtx) return;
+  const elapsed = audioCtx.currentTime - playbackStartCtxTime + playbackOffset;
+  const pos = loopFadeMode ? (elapsed % playbackDuration) / playbackDuration : elapsed / playbackDuration;
   const ph = document.getElementById('playhead');
   if (ph) ph.style.left = (Math.min(1, pos) * 100) + '%';
   playheadRAF = requestAnimationFrame(animatePlayhead);
@@ -1281,11 +1286,6 @@ function stopPlayhead() {
 }
 
 function stopPlayback() {
-  if (playbackAudio) {
-    playbackAudio.pause();
-    if (playbackAudio.src) URL.revokeObjectURL(playbackAudio.src);
-    playbackAudio = null;
-  }
   if (playSource) { try { playSource.stop(); } catch(e) {} playSource = null; }
   isPlaying = false;
   stopPlayhead();

@@ -39,6 +39,20 @@ input[type="file"]{display:none}
 .wp-name{flex:1;font-size:.95em}
 .wp-dist{font-size:.8em;color:#888;min-width:60px;text-align:right}
 .wp-requires{font-size:.7em;color:#f0ad4e;margin-top:2px}
+.wp-requires.unmet{color:#d9534f}
+.wp-visited-time{font-size:.65em;color:#555;margin-top:2px}
+.waypoint-list li{cursor:pointer;transition:background .15s}
+.waypoint-list li:active{background:#252525}
+
+/* Compass overlay */
+.compass-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#111e;z-index:5000;flex-direction:column;align-items:center;justify-content:center}
+.compass-overlay.open{display:flex}
+.compass-target-name{font-size:1.2em;font-weight:700;color:#fff;margin-bottom:8px}
+.compass-dist{font-size:.9em;color:#888;margin-bottom:20px}
+.compass-ring{width:200px;height:200px;border:2px solid #333;border-radius:50%;position:relative;display:flex;align-items:center;justify-content:center}
+.compass-arrow{width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-bottom:60px solid #5cb85c;position:absolute;transform-origin:center 60px;transition:transform .3s}
+.compass-n{position:absolute;top:-20px;font-size:.7em;color:#555}
+.compass-close{margin-top:24px;padding:12px 32px;background:#333;color:#fff;border:none;border-radius:8px;font-size:1em;cursor:pointer;min-height:44px}
 #gps-status{padding:8px 16px;font-size:.8em;color:#888;border-top:1px solid #222}
 .status-bar{display:flex;align-items:center;gap:8px}
 .gps-dot{width:8px;height:8px;border-radius:50%;background:#d9534f}
@@ -104,20 +118,25 @@ nav a{color:#337ab7;text-decoration:none;margin-right:16px;font-size:.9em;displa
 // --- State ---
 let tour = null;
 let waypoints = [];
-let session = { visited: [], path: [] };
+let session = { visited: {}, path: [] }; // visited: { wpId: timestamp_iso }
+let compassWpIndex = null; // which waypoint compass is open for
 let watchId = null;
 let currentPos = null;
 let audioCtx = null;
 let currentSources = [];
 
-const DB_NAME = 'pr-player-audio';
-const DB_VERSION = 1;
+// Shared storage with editor — same DB and localStorage keys
+const DB_NAME = 'pr-editor-audio';
 const STORE = 'blobs';
+const META_KEY = 'pr-editor-meta';
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    const req = indexedDB.open(DB_NAME);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -317,30 +336,59 @@ async function loadTourFile(event) {
     if (!tour) { log('ERROR: Could not parse TOUR from cartridge.py'); return; }
     log('Tour: ' + tour.title + ' (' + waypoints.length + ' waypoints)');
 
-    // Load audio blobs into IndexedDB
+    // Load audio blobs into shared IndexedDB (same as editor)
     await clearBlobs();
     let audioCount = 0;
-    for (const entry of Object.entries(zip.files)) {
-      const [path, zipEntry] = entry;
-      if (zipEntry.dir) continue;
-      // Match audio files in track directories
-      if (/\.(opus|mp3|wav|ogg|m4a|webm)$/i.test(path)) {
-        const blob = await zipEntry.async('blob');
-        await storeBlob(path, blob);
-        audioCount++;
+    for (let i = 0; i < waypoints.length; i++) {
+      const wp = waypoints[i];
+      if (!wp._blobKeys) wp._blobKeys = {};
+      if (!wp._meta) wp._meta = {};
+      for (const setType of ['on', 'off']) {
+        const tracks = setType === 'on' ? wp.tracks_on : wp.tracks_off;
+        if (!tracks) continue;
+        for (const [ttype, tpath] of Object.entries(tracks)) {
+          if (!tpath) continue;
+          const zipEntry = zip.file(tpath);
+          if (zipEntry) {
+            const blob = await zipEntry.async('blob');
+            // store with editor-compatible key
+            const key = `wp-${i}-${setType}-${ttype}-${tpath.split('/').pop()}`;
+            await storeBlob(key, blob);
+            // also store by path for player playback
+            await storeBlob(tpath, blob);
+            wp._blobKeys[`${setType}/${ttype}`] = key;
+            audioCount++;
+          }
+          // load sidecar
+          const sidecarPath = tpath.replace(/\.[^.]+$/, '.json');
+          const sidecarEntry = zip.file(sidecarPath);
+          if (sidecarEntry) {
+            try { wp._meta[`${setType}/${ttype}`] = JSON.parse(await sidecarEntry.async('text')); } catch(e) {}
+          }
+        }
       }
     }
-    log('Loaded ' + audioCount + ' audio files into IndexedDB');
+    log('Loaded ' + audioCount + ' audio files');
+
+    // Sync to editor storage so editor sees the same tour
+    localStorage.setItem(META_KEY, JSON.stringify(waypoints));
+    localStorage.setItem('pr-ed-title', tour.title || 'Untitled');
 
     // Restore session
     const savedSession = localStorage.getItem('pr-session-' + tour.id);
     if (savedSession) {
       const parsed = JSON.parse(savedSession);
-      session.visited = parsed.visited || [];
+      // handle old array format: convert to { id: timestamp }
+      if (Array.isArray(parsed.visited)) {
+        session.visited = {};
+        parsed.visited.forEach(id => { session.visited[id] = ''; });
+      } else {
+        session.visited = parsed.visited || {};
+      }
       session.path = parsed.path || [];
-      log('Restored session: ' + session.visited.length + ' waypoints visited');
+      log('Restored session: ' + Object.keys(session.visited).length + ' waypoints visited');
     } else {
-      session.visited = [];
+      session.visited = {};
       session.path = [];
     }
 
@@ -372,22 +420,84 @@ async function loadTourFile(event) {
   event.target.value = '';
 }
 
+function wpNameById(id) {
+  const w = waypoints.find(x => x.id === id);
+  return w ? (w.name || w.id) : id;
+}
+
 function renderWaypoints() {
   const list = document.getElementById('waypoint-list');
   list.innerHTML = '';
   waypoints.forEach((wp, i) => {
     const li = document.createElement('li');
-    const visited = session.visited.includes(wp.id);
-    li.innerHTML = `
-      <div class="wp-indicator ${visited ? 'visited' : 'unvisited'}" id="wp-ind-${i}"></div>
-      <div style="flex:1">
-        <div class="wp-name">${wp.name || wp.id}</div>
-        ${wp.requires && wp.requires.length ? '<div class="wp-requires">Requires: ' + wp.requires.join(', ') + '</div>' : ''}
-      </div>
-      <div class="wp-dist" id="wp-dist-${i}">--</div>
-    `;
+    li.onclick = () => openCompass(i);
+    const visited = session.visited[wp.id];
+    const requires = wp.requires || [];
+    const allMet = requires.every(id => (id in session.visited));
+
+    let reqHtml = '';
+    if (requires.length > 0) {
+      const names = requires.map(id => {
+        const met = (id in session.visited);
+        return '<span style="color:' + (met ? '#5cb85c' : '#d9534f') + '">' + wpNameById(id) + '</span>';
+      }).join(', ');
+      reqHtml = '<div class="wp-requires ' + (allMet ? '' : 'unmet') + '">Requires: ' + names + '</div>';
+    }
+
+    let timeHtml = '';
+    if (visited) {
+      const ts = new Date(visited);
+      if (!isNaN(ts)) timeHtml = '<div class="wp-visited-time">Visited ' + ts.toLocaleString() + '</div>';
+    }
+
+    if (requires.length > 0 && !allMet && !visited) {
+      li.style.borderLeft = '3px solid #d9534f44';
+    }
+
+    li.innerHTML =
+      '<div class="wp-indicator ' + (visited ? 'visited' : 'unvisited') + '" id="wp-ind-' + i + '"></div>' +
+      '<div style="flex:1">' +
+        '<div class="wp-name">' + (wp.name || wp.id) + '</div>' +
+        reqHtml + timeHtml +
+      '</div>' +
+      '<div class="wp-dist" id="wp-dist-' + i + '">--</div>';
     list.appendChild(li);
   });
+}
+
+// --- Compass ---
+function openCompass(wpIndex) {
+  compassWpIndex = wpIndex;
+  const wp = waypoints[wpIndex];
+  document.getElementById('compass-name').textContent = wp.name || wp.id;
+  document.getElementById('compass-overlay').classList.add('open');
+  updateCompass();
+}
+
+function closeCompass() {
+  compassWpIndex = null;
+  document.getElementById('compass-overlay').classList.remove('open');
+}
+
+function updateCompass() {
+  if (compassWpIndex === null || !currentPos) return;
+  const wp = waypoints[compassWpIndex];
+  if (!wp || !wp.trigger || !wp.trigger.coords) return;
+
+  const dist = haversineM(currentPos.lat, currentPos.lng, wp.trigger.coords[0], wp.trigger.coords[1]);
+  document.getElementById('compass-dist').textContent =
+    dist < 1000 ? Math.round(dist) + 'm away' : (dist / 1000).toFixed(1) + 'km away';
+
+  // bearing from current position to waypoint
+  const toRad = Math.PI / 180;
+  const dLng = (wp.trigger.coords[1] - currentPos.lng) * toRad;
+  const lat1 = currentPos.lat * toRad;
+  const lat2 = wp.trigger.coords[0] * toRad;
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+
+  document.getElementById('compass-arrow').style.transform = 'rotate(' + bearing + 'deg)';
 }
 
 function saveSession() {
@@ -461,7 +571,7 @@ function onPosition(pos) {
     const radius = wp.trigger.radius_m || 20;
     const indEl = document.getElementById('wp-ind-' + i);
 
-    if (dist <= radius && !session.visited.includes(wp.id)) {
+    if (dist <= radius && !session.visited[wp.id]) {
       // Waypoint triggered
       log('TRIGGERED: ' + (wp.name || wp.id) + ' (dist: ' + Math.round(dist) + 'm)');
       if (indEl) indEl.className = 'wp-indicator active';
@@ -470,12 +580,15 @@ function onPosition(pos) {
       // Already visited, within range
     }
   });
+
+  // update compass if open
+  updateCompass();
 }
 
 async function triggerWaypoint(wp, index) {
   // Check prerequisites
   const requires = wp.requires || [];
-  const allMet = requires.every(id => session.visited.includes(id));
+  const allMet = requires.every(id => (id in session.visited));
   const useSameAudio = wp.same_audio !== false;
 
   let tracks;
@@ -485,24 +598,24 @@ async function triggerWaypoint(wp, index) {
   } else {
     tracks = wp.tracks_off || {};
     log('Prerequisites not met for: ' + (wp.name || wp.id) + ' — playing off-track');
-    const missing = requires.filter(id => !session.visited.includes(id));
+    const missing = requires.filter(id => !(id in session.visited));
     log('Missing: ' + missing.join(', '));
   }
 
-  // Mark as visited
-  session.visited.push(wp.id);
+  // Mark as visited with timestamp
+  session.visited[wp.id] = new Date().toISOString();
   session.path.push(wp.id);
   saveSession();
 
-  // Update indicator
-  const indEl = document.getElementById('wp-ind-' + index);
-  if (indEl) indEl.className = 'wp-indicator visited';
+  // Re-render to show timestamp and update prerequisite colors
+  renderWaypoints();
 
   // Play audio (currently only ATMO)
-  await playTracks(tracks);
+  const trackSet = (useSameAudio || allMet) ? 'on' : 'off';
+  await playTracks(tracks, wp, trackSet);
 }
 
-async function playTracks(tracks) {
+async function playTracks(tracks, wp, setType) {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
   for (const [trackType, path] of Object.entries(tracks)) {
@@ -510,8 +623,13 @@ async function playTracks(tracks) {
 
     if (trackType === 'atmo') {
       try {
-        const blob = await loadBlob(path);
-        if (!blob) { log('Audio not found in DB: ' + path); continue; }
+        // try by path first, then by editor blob key
+        let blob = await loadBlob(path);
+        if (!blob && wp?._blobKeys) {
+          const blobKey = wp._blobKeys[`${setType}/${trackType}`];
+          if (blobKey) blob = await loadBlob(blobKey);
+        }
+        if (!blob) { log('Audio not found: ' + path); continue; }
         const arrayBuffer = await blob.arrayBuffer();
         const buffer = await audioCtx.decodeAudioData(arrayBuffer);
         stopAllAudio();
@@ -569,7 +687,61 @@ function initSilentCarrier() {
   carrier.volume = 0.01;
   carrier.play().catch(() => {});
 }
+
+// --- Auto-load from editor storage on startup ---
+(function loadFromEditorStorage() {
+  const raw = localStorage.getItem(META_KEY);
+  const title = localStorage.getItem('pr-ed-title');
+  if (!raw) return;
+  try {
+    const editorWaypoints = JSON.parse(raw);
+    if (!editorWaypoints || !editorWaypoints.length) return;
+
+    waypoints = editorWaypoints;
+    tour = { id: (title || 'tour').replace(/[^a-z0-9]/gi, '-').toLowerCase(), title: title || 'Untitled Tour' };
+
+    // Restore session
+    const savedSession = localStorage.getItem('pr-session-' + tour.id);
+    if (savedSession) {
+      const parsed = JSON.parse(savedSession);
+      if (Array.isArray(parsed.visited)) {
+        session.visited = {};
+        parsed.visited.forEach(id => { session.visited[id] = ''; });
+      } else {
+        session.visited = parsed.visited || {};
+      }
+      session.path = parsed.path || [];
+    }
+
+    // Show banner
+    document.getElementById('tour-banner').style.display = 'block';
+    document.getElementById('tour-title').textContent = tour.title;
+    document.getElementById('tour-wp-count').textContent = waypoints.length + ' waypoints';
+    document.getElementById('tour-author').textContent = '';
+    document.getElementById('tour-pubkey').textContent = '';
+    document.getElementById('tour-contributors').textContent = '';
+
+    renderWaypoints();
+    document.getElementById('btn-start').disabled = false;
+    document.getElementById('empty-msg').style.display = 'none';
+
+    log('Loaded tour from editor: ' + tour.title + ' (' + waypoints.length + ' waypoints)');
+  } catch(e) {
+    console.error('Failed to load from editor storage:', e);
+  }
+})();
 </script>
+
+<div class="compass-overlay" id="compass-overlay">
+  <div class="compass-target-name" id="compass-name"></div>
+  <div class="compass-dist" id="compass-dist"></div>
+  <div class="compass-ring">
+    <div class="compass-n">N</div>
+    <div class="compass-arrow" id="compass-arrow"></div>
+  </div>
+  <button class="compass-close" onclick="closeCompass()">Close</button>
+</div>
+
 <nav class="bottom-nav">
   <a href="/" class="active"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Player</a>
   <a href="/editor"><svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Editor</a>

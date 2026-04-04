@@ -29,7 +29,7 @@ input[type="file"]{display:none}
 
 /* Panel */
 .panel-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:2000}
-.panel{position:fixed;bottom:0;left:0;right:0;max-height:85vh;background:#1a1a1a;border-radius:12px 12px 0 0;z-index:2001;overflow-y:auto;padding:16px;display:none}
+.panel{position:fixed;bottom:0;left:0;right:0;max-height:85vh;background:#1a1a1a;border-radius:12px 12px 0 0;z-index:2001;overflow-y:auto;padding:16px;padding-bottom:80px;display:none}
 .panel-header{display:flex;align-items:center;margin-bottom:12px}
 .panel-header h2{flex:1;font-size:1.1em;color:#5cb85c}
 .panel-close{background:none;border:none;color:#888;font-size:1.5em;cursor:pointer;min-height:44px;min-width:44px}
@@ -49,13 +49,20 @@ select{width:100%;padding:10px;font-size:.95em;background:#222;border:1px solid 
 .audio-tab.off{background:#4a3a1a;color:#f0ad4e}
 .audio-tab.active-tab{opacity:1;border-bottom:2px solid}
 .audio-tab:not(.active-tab){opacity:.5}
-.track-row{display:flex;align-items:center;gap:8px;padding:8px;background:#222;border-radius:6px;margin-bottom:6px}
+.track-row{padding:8px;background:#222;border-radius:6px;margin-bottom:6px}
+.track-header{display:flex;align-items:center;gap:8px}
 .track-label{width:70px;font-size:.8em;font-weight:600;color:#888;text-transform:uppercase}
 .track-file{flex:1;font-size:.8em;color:#aaa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .track-meta{font-size:.7em;color:#666;margin-top:2px}
 .track-buttons{display:flex;gap:4px}
 .track-buttons button{min-height:36px;min-width:36px;padding:4px 8px;font-size:.75em}
-.delete-section{margin-top:24px;padding-top:16px;border-top:1px solid #333}
+.track-wave-wrap{margin-top:6px;position:relative;cursor:pointer}
+.track-wave-wrap canvas{width:100%;height:48px;display:block;border-radius:4px;background:#1a1a1a}
+.track-transport{display:flex;gap:4px;margin-top:4px}
+.track-transport button{min-height:32px;min-width:32px;padding:2px 8px;font-size:.75em}
+.track-playhead{position:absolute;top:0;bottom:0;width:2px;background:#5cb85c;pointer-events:none;left:0}
+.delete-section{margin-top:24px;padding-top:16px;border-top:1px solid #333;display:flex;gap:8px}
+.btn-amber-outline{background:transparent;border:2px solid #f0ad4e;color:#f0ad4e}
 
 /* Library picker */
 .lib-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:3000}
@@ -65,18 +72,33 @@ select{width:100%;padding:10px;font-size:.95em;background:#222;border:1px solid 
 .lib-track-item{padding:8px 12px;background:#2a2a2a;border-radius:4px;margin:4px 0;cursor:pointer;font-size:.85em;display:flex;align-items:center;gap:8px}
 .lib-track-item:hover{background:#333}
 
-nav{padding:8px 12px;background:#1a1a1a;border-top:1px solid #333;z-index:1000}
-nav a{color:#337ab7;text-decoration:none;margin-right:16px;font-size:.85em;display:inline-block;min-height:44px;line-height:44px}
+.add-wp-popup .leaflet-popup-content-wrapper{background:#1a1a1a;border-radius:8px;box-shadow:0 4px 16px #0008}
+.add-wp-popup .leaflet-popup-content{margin:8px}
+.add-wp-popup .leaflet-popup-tip{background:#1a1a1a}
+
+/* Settings panel */
+.settings-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:4000}
+.settings-panel{position:fixed;top:5%;left:3%;right:3%;bottom:5%;background:#1a1a1a;border-radius:12px;z-index:4001;overflow-y:auto;padding:16px;display:none;-webkit-overflow-scrolling:touch}
+.settings-panel h2{font-size:1.1em;margin-bottom:12px;color:#fff}
+.settings-panel label{display:block;font-size:.8em;color:#888;margin-bottom:4px;margin-top:12px}
+.settings-panel input[type=text],.settings-panel textarea{width:100%;background:#222;border:1px solid #333;border-radius:6px;color:#eee;padding:10px;font-size:.9em;font-family:inherit}
+.settings-panel textarea{min-height:120px;resize:vertical;font-family:'SF Mono','Menlo',monospace;font-size:.8em;line-height:1.5}
+.settings-media{margin-top:12px}
+.settings-media-grid{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.settings-media-item{position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;background:#222}
+.settings-media-item img,.settings-media-item video{width:100%;height:100%;object-fit:cover}
+.settings-media-item .media-del{position:absolute;top:2px;right:2px;width:20px;height:20px;background:#d9534fcc;color:#fff;border:none;border-radius:50%;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.settings-media-size{font-size:.75em;color:#666;margin-top:4px}
+.settings-actions{display:flex;gap:8px;margin-top:16px}
 </style>
 </head>
 <body>
 
 <div class="toolbar">
-<input type="text" id="tourTitle" value="My Tour" placeholder="Tour name" style="background:none;border:none;color:#fff;font:inherit;font-weight:700;font-size:14px;width:120px;margin-right:auto" oninput="tourTitle=this.value;localStorage.setItem('pr-ed-title',this.value)">
-<button class="btn-dark active" id="btn-navigate" onclick="setMode('navigate')">Nav</button>
-<button class="btn-dark" id="btn-place" onclick="setMode('place')">+ Point</button>
+<span id="toolbarTitle" style="color:#fff;font-weight:700;font-size:14px;margin-right:auto;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="openSettings()"></span>
 <button class="btn-blue" onclick="openTour()">Open</button>
 <button class="btn-green" onclick="saveTour()">Save</button>
+<button class="btn-dark" onclick="openSettings()">&#9881;</button>
 </div>
 
 <div id="map"></div>
@@ -101,15 +123,34 @@ nav a{color:#337ab7;text-decoration:none;margin-right:16px;font-size:.85em;displ
 <div id="lib-body"></div>
 </div>
 
-<input type="file" id="open-file" accept=".pr,.zip" onchange="handleOpen(event)">
-<input type="file" id="audio-upload" accept="audio/*,.zip">
-<input type="file" id="lib-file" accept=".pr,.zip">
+<!-- Settings panel -->
+<div class="settings-overlay" id="settings-overlay" onclick="closeSettings()"></div>
+<div class="settings-panel" id="settings-panel">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h2>Tour Settings</h2>
+    <button class="panel-close" onclick="closeSettings()">&times;</button>
+  </div>
 
-<nav>
-<a href="/">Player</a>
-<a href="/identity">Identity</a>
-<a href="/recorder">Recorder</a>
-</nav>
+  <label>Tour Name</label>
+  <input type="text" id="settings-name" placeholder="My Tour" onchange="saveTourSettings()">
+
+  <label>Description <span style="color:#555">(Markdown)</span></label>
+  <textarea id="settings-desc" placeholder="Describe the tour experience...&#10;&#10;Supports **bold**, *italic*, [links](url), etc." onchange="saveTourSettings()"></textarea>
+
+  <div class="settings-media">
+    <label>Media <span style="color:#555">(images/video, max 10MB total)</span></label>
+    <div class="settings-media-grid" id="media-grid"></div>
+    <div class="settings-media-size" id="media-size"></div>
+    <button class="btn-blue" onclick="addMedia()" style="margin-top:8px;font-size:.8em;padding:8px 14px">Add Image/Video</button>
+    <input type="file" id="media-file" accept="image/*,video/*" style="display:none" onchange="handleMediaUpload(event)">
+  </div>
+
+  <div class="settings-actions">
+    <button class="btn-green" onclick="closeSettings()">Done</button>
+  </div>
+</div>
+
+<input type="file" id="open-file" accept=".pr,.zip" onchange="handleOpen(event)">
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -118,7 +159,6 @@ nav a{color:#337ab7;text-decoration:none;margin-right:16px;font-size:.85em;displ
 if (!localStorage.getItem('pr-identity')) window.location.href = '/identity';
 
 // --- State ---
-let mode = 'navigate';
 let waypoints = [];
 let selectedWp = null;
 let activeAudioSet = 'on'; // 'on' or 'off'
@@ -126,16 +166,20 @@ let map, wpLayers = [], arrowLayers = [];
 let playingAudio = null;
 let currentLibTarget = null; // { wpIndex, set, track }
 let tourTitle = localStorage.getItem('pr-ed-title') || 'My Tour';
+let tourDescription = localStorage.getItem('pr-ed-desc') || '';
+let tourMedia = JSON.parse(localStorage.getItem('pr-ed-media') || '[]'); // [{name, type, blobKey, size}]
 
 const DB_NAME = 'pr-editor-audio';
-const DB_VERSION = 1;
 const STORE = 'blobs';
 const META_KEY = 'pr-editor-meta';
 
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    const req = indexedDB.open(DB_NAME);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -174,7 +218,7 @@ function loadMeta() {
 }
 
 // restore title
-document.getElementById('tourTitle').value = tourTitle;
+document.getElementById('toolbarTitle').textContent = tourTitle || 'My Tour';
 
 // --- Map ---
 map = L.map('map', { zoomControl: false }).setView([59.437, 24.745], 15);
@@ -184,15 +228,26 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
 }).addTo(map);
 
 map.on('click', function(e) {
-  if (mode !== 'place') return;
-  addWaypoint(e.latlng.lat, e.latlng.lng);
+  if (window._adjustMode) return; // handled by adjust handler
+  // check if click is near an existing waypoint
+  const clickLatLng = e.latlng;
+  let nearestIdx = -1;
+  let nearestDist = Infinity;
+  waypoints.forEach((wp, i) => {
+    const d = map.distance(clickLatLng, L.latLng(wp.trigger.coords));
+    if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+  });
+  // if within the waypoint radius, open editor
+  if (nearestIdx >= 0 && nearestDist <= (waypoints[nearestIdx].trigger.radius_m || 20) * 1.5) {
+    openWaypointPanel(nearestIdx);
+  } else {
+    // show popup to add waypoint
+    L.popup({ closeButton: true, className: 'add-wp-popup' })
+      .setLatLng(clickLatLng)
+      .setContent(`<button onclick="addWaypoint(${clickLatLng.lat},${clickLatLng.lng});this.closest('.leaflet-popup').remove()" style="background:#5cb85c;color:#fff;border:none;border-radius:6px;padding:10px 18px;font-size:14px;font-weight:600;cursor:pointer;min-height:44px">Add waypoint here</button>`)
+      .openOn(map);
+  }
 });
-
-function setMode(m) {
-  mode = m;
-  document.getElementById('btn-navigate').className = 'btn-dark' + (m === 'navigate' ? ' active' : '');
-  document.getElementById('btn-place').className = 'btn-dark' + (m === 'place' ? ' active' : '');
-}
 
 function generateId() {
   return 'wp-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 6);
@@ -242,8 +297,9 @@ function renderMap() {
     const label = hasPrereqs ? `[${wp.requires.length}] ${wp.name}` : wp.name;
     marker.bindTooltip(label, { permanent: true, direction: 'top', className: 'wp-tooltip', offset: [0, -10] });
 
-    marker.on('click', function() {
-      if (mode === 'navigate') openWaypointPanel(i);
+    marker.on('click', function(e) {
+      L.DomEvent.stopPropagation(e);
+      openWaypointPanel(i);
     });
 
     wpLayers.push(circle, marker);
@@ -282,12 +338,14 @@ function openWaypointPanel(index) {
   document.getElementById('panel-body').innerHTML = buildPanelHTML(wp, index);
   document.getElementById('panel-overlay').style.display = 'block';
   document.getElementById('panel').style.display = 'block';
+  // draw waveforms after DOM is ready
+  requestAnimationFrame(() => drawTrackWaveforms());
 }
 
 function closePanel() {
   document.getElementById('panel-overlay').style.display = 'none';
   document.getElementById('panel').style.display = 'none';
-  stopAudioPreview();
+  stopTrack();
   selectedWp = null;
 }
 
@@ -346,7 +404,8 @@ function buildPanelHTML(wp, index) {
 
   html += `
     <div class="delete-section">
-      <button class="btn-red" onclick="deleteWaypoint(${index})">Delete Waypoint</button>
+      <button class="btn-amber-outline" onclick="adjustWaypoint(${index})" style="flex:1">Adjust Position</button>
+      <button class="btn-red" onclick="deleteWaypoint(${index})" style="flex:1">Delete</button>
     </div>
   `;
 
@@ -375,21 +434,32 @@ function buildTrackRows(wp, index) {
       metaDisplay = `<div class="track-meta">${parts.join(' | ')}</div>`;
     }
 
+    const canvasId = `wave-${index}-${set}-${type}`;
+    const waveSection = file ? `
+      <div class="track-wave-wrap" onclick="seekTrack(event,${index},'${set}','${type}')">
+        <canvas id="${canvasId}" width="600" height="48"></canvas>
+        <div class="track-playhead" id="ph-${canvasId}"></div>
+      </div>
+      <div class="track-transport">
+        <button class="btn-green" onclick="playTrack(${index},'${set}','${type}')" id="tbtn-${canvasId}">&#9654;</button>
+        <button class="btn-dark" onclick="stopTrack()">&#9632;</button>
+      </div>
+    ` : '';
+
     return `
       <div class="track-row">
-        <div style="display:flex;align-items:center;gap:8px">
+        <div class="track-header">
           <span class="track-label">${type}</span>
           <div style="flex:1">
             <div class="track-file">${file || '—'}</div>
             ${metaDisplay}
           </div>
           <div class="track-buttons">
-            <button class="btn-blue" onclick="uploadTrack(${index},'${set}','${type}')">Upload</button>
-            <button class="btn-amber" onclick="browseLibrary(${index},'${set}','${type}')">Lib</button>
-            ${file ? `<button class="btn-green" onclick="previewTrack(${index},'${set}','${type}')">Play</button>` : ''}
+            <button class="btn-blue" onclick="browseRecorderLibrary(${index},'${set}','${type}')">Library</button>
             ${file ? `<button class="btn-red" onclick="removeTrack(${index},'${set}','${type}')">Del</button>` : ''}
           </div>
         </div>
+        ${waveSection}
       </div>
     `;
   }).join('');
@@ -453,28 +523,171 @@ function deleteWaypoint(index) {
   closePanel();
 }
 
+function adjustWaypoint(index) {
+  closePanel();
+  window._adjustMode = true;
+  const wp = waypoints[index];
+  const coords = wp.trigger.coords;
+
+  renderMap();
+
+  const markerIcon = L.divIcon({
+    className: '',
+    html: '<div style="width:20px;height:20px;background:#f0ad4e;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px #0008"></div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  });
+
+  const dragMarker = L.marker(coords, { draggable: true, icon: markerIcon }).addTo(map);
+
+  const previewCircle = L.circle(coords, {
+    radius: wp.trigger.radius_m || 20,
+    color: '#f0ad4e', fillColor: '#f0ad4e', fillOpacity: 0.15, weight: 2, dashArray: '6 4'
+  }).addTo(map);
+
+  function moveToPos(latlng) {
+    dragMarker.setLatLng(latlng);
+    previewCircle.setLatLng(latlng);
+  }
+
+  dragMarker.on('drag', function(e) { previewCircle.setLatLng(e.target.getLatLng()); });
+
+  // Click map to jump waypoint there
+  function onMapClick(e) { moveToPos(e.latlng); }
+  map.on('click', onMapClick);
+
+  // Banner
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#f0ad4e;color:#111;text-align:center;padding:12px;z-index:5000;font-weight:600;font-size:.9em;display:flex;align-items:center;justify-content:center;gap:12px';
+  banner.innerHTML = `
+    <span>Tap or drag to reposition</span>
+    <button onclick="confirmAdjust()" style="background:#111;color:#f0ad4e;border:none;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;min-height:36px">Done</button>
+    <button onclick="cancelAdjust()" style="background:transparent;color:#111;border:2px solid #111;border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;min-height:36px">Cancel</button>
+  `;
+  document.body.appendChild(banner);
+
+  window._adjustState = { index, dragMarker, previewCircle, banner, onMapClick, originalCoords: [...coords] };
+}
+
+function _cleanupAdjust() {
+  const s = window._adjustState;
+  if (!s) return;
+  map.off('click', s.onMapClick);
+  map.removeLayer(s.dragMarker);
+  map.removeLayer(s.previewCircle);
+  s.banner.remove();
+  window._adjustState = null;
+  window._adjustMode = false;
+}
+
+function confirmAdjust() {
+  const s = window._adjustState;
+  if (!s) return;
+  const pos = s.dragMarker.getLatLng();
+  waypoints[s.index].trigger.coords = [Math.round(pos.lat * 1e6) / 1e6, Math.round(pos.lng * 1e6) / 1e6];
+  saveMeta();
+  _cleanupAdjust();
+  renderMap();
+}
+
+function cancelAdjust() {
+  _cleanupAdjust();
+  renderMap();
+}
+
 // --- Audio operations ---
-function uploadTrack(wpIndex, set, track) {
-  const input = document.getElementById('audio-upload');
-  input.onchange = async function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const key = `wp-${wpIndex}-${set}-${track}-${file.name}`;
-    const storePath = `track/${set}/${file.name}`;
-    await storeBlob(key, file);
+// Recorder library DB (shared with recorder.html)
+const REC_DB_NAME = 'pr-recorder';
+const REC_STORE = 'clips';
 
-    const wp = waypoints[wpIndex];
-    const tracks = set === 'on' ? wp.tracks_on : wp.tracks_off;
-    tracks[track] = storePath;
+function openRecorderDB() {
+  return new Promise((resolve, reject) => {
+    // Open without version to match whatever version exists
+    const req = indexedDB.open(REC_DB_NAME);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(REC_STORE)) {
+        db.createObjectStore(REC_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
 
-    // Store the blob key for retrieval
-    if (!wp._blobKeys) wp._blobKeys = {};
-    wp._blobKeys[`${set}/${track}`] = key;
+async function getRecorderClips() {
+  const db = await openRecorderDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(REC_STORE, 'readonly');
+    const req = tx.objectStore(REC_STORE).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
 
-    saveMeta(); openWaypointPanel(wpIndex);
-    input.value = '';
-  };
-  input.click();
+async function saveToRecorderDB(clip) {
+  const db = await openRecorderDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(REC_STORE, 'readwrite');
+    tx.objectStore(REC_STORE).put(clip);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function browseRecorderLibrary(wpIndex, set, track) {
+  currentLibTarget = { wpIndex, set, track };
+  const clips = await getRecorderClips();
+
+  let html = '';
+  if (clips.length === 0) {
+    html = '<p style="color:#666;font-size:.85em;padding:16px;text-align:center">No recordings in library. Use the Recorder to create or import audio.</p>';
+  } else {
+    html = '<p style="color:#888;font-size:.85em;margin-bottom:12px">Select a recording:</p>';
+    clips.forEach((c, i) => {
+      const meta = c.meta || {};
+      const tags = (meta.tags || []).join(', ');
+      const loc = meta.location ? `${meta.location.lat.toFixed(4)}, ${meta.location.lng.toFixed(4)}` : '';
+      html += `<div class="lib-track-item" onclick="pickFromRecorderLib('${c.id}')" style="cursor:pointer">
+        <div style="flex:1">
+          <div style="color:#fff;font-weight:600;font-size:.9em">${c.name || 'Untitled'}</div>
+          <div style="color:#888;font-size:.75em">${(meta.duration_s || 0).toFixed(1)}s${loc ? ' | ' + loc : ''}${tags ? ' | ' + tags : ''}</div>
+        </div>
+        <span style="color:#5cb85c;font-size:.8em">${meta.source || ''}</span>
+      </div>`;
+    });
+  }
+
+  document.getElementById('lib-body').innerHTML = html;
+  document.getElementById('lib-overlay').style.display = 'block';
+  document.getElementById('lib-panel').style.display = 'block';
+}
+
+async function pickFromRecorderLib(clipId) {
+  if (!currentLibTarget) return;
+  const clips = await getRecorderClips();
+  const clip = clips.find(c => c.id === clipId);
+  const audioBlob = clip.wav || clip.wavBlob;
+  if (!clip || !audioBlob) { alert('Clip has no audio data'); return; }
+
+  const { wpIndex, set, track } = currentLibTarget;
+  const wp = waypoints[wpIndex];
+  const key = `wp-${wpIndex}-${set}-${track}-rec-${clip.name || clipId}`;
+  await storeBlob(key, audioBlob);
+
+  const tracks = set === 'on' ? wp.tracks_on : wp.tracks_off;
+  tracks[track] = `${track}/${set}/${clip.name || clipId}.wav`;
+  if (!wp._blobKeys) wp._blobKeys = {};
+  wp._blobKeys[`${set}/${track}`] = key;
+
+  if (clip.meta) {
+    if (!wp._meta) wp._meta = {};
+    wp._meta[`${set}/${track}`] = clip.meta;
+  }
+
+  saveMeta();
+  closeLibrary();
+  openWaypointPanel(wpIndex);
 }
 
 function removeTrack(wpIndex, set, track) {
@@ -487,109 +700,278 @@ function removeTrack(wpIndex, set, track) {
   saveMeta(); openWaypointPanel(wpIndex);
 }
 
-function stopAudioPreview() {
-  if (playingAudio) { playingAudio.pause(); playingAudio = null; }
+// --- Track audio preview with waveform ---
+let trackAudioCtx = null;
+let trackPlaySource = null;
+let trackPlayingId = null;
+let trackPlayStartTime = 0;
+let trackPlayOffset = 0;
+let trackPlayDuration = 0;
+let trackPlayRAF = null;
+let trackPausedAt = 0; // remembers position on pause
+let trackPausedId = null; // which track was paused
+let trackPausedArgs = null; // [wpIndex, set, track] for resume
+
+function ensureTrackCtx() {
+  if (!trackAudioCtx || trackAudioCtx.state === 'closed')
+    trackAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (trackAudioCtx.state === 'suspended') trackAudioCtx.resume();
+  return trackAudioCtx;
 }
 
-async function previewTrack(wpIndex, set, track) {
-  stopAudioPreview();
+function stopAudioPreview() { stopTrack(); }
+
+function stopTrack() {
+  if (trackPlaySource) { try { trackPlaySource.stop(); } catch(e) {} trackPlaySource = null; }
+  if (trackPlayRAF) { cancelAnimationFrame(trackPlayRAF); trackPlayRAF = null; }
+  // reset playhead
+  const resetId = trackPlayingId || trackPausedId;
+  if (resetId) {
+    const ph = document.getElementById('ph-' + resetId);
+    if (ph) ph.style.left = '0';
+    const btn = document.getElementById('tbtn-' + resetId);
+    if (btn) btn.innerHTML = '&#9654;';
+  }
+  trackPlayingId = null;
+  trackPausedId = null;
+  trackPausedAt = 0;
+  trackPausedArgs = null;
+}
+
+async function playTrack(wpIndex, set, track, startOffset) {
+  const canvasId = `wave-${wpIndex}-${set}-${track}`;
+
+  // if already playing this track, pause and remember position
+  if (trackPlayingId === canvasId) {
+    const ctx = ensureTrackCtx();
+    trackPausedAt = ctx.currentTime - trackPlayStartTime + trackPlayOffset;
+    trackPausedId = canvasId;
+    trackPausedArgs = [wpIndex, set, track];
+    if (trackPlaySource) { try { trackPlaySource.stop(); } catch(e) {} trackPlaySource = null; }
+    if (trackPlayRAF) { cancelAnimationFrame(trackPlayRAF); trackPlayRAF = null; }
+    const btn = document.getElementById('tbtn-' + canvasId);
+    if (btn) btn.innerHTML = '&#9654;';
+    trackPlayingId = null;
+    return;
+  }
+
+  // if resuming a paused track (same track, no explicit offset)
+  if (startOffset === undefined && trackPausedId === canvasId && trackPausedAt > 0) {
+    startOffset = trackPausedAt;
+    trackPausedId = null;
+    trackPausedAt = 0;
+  }
+
+  stopTrack();
+
   const wp = waypoints[wpIndex];
   const blobKey = wp._blobKeys && wp._blobKeys[`${set}/${track}`];
   if (!blobKey) return;
   const blob = await loadBlob(blobKey);
   if (!blob) return;
-  const url = URL.createObjectURL(blob);
-  playingAudio = new Audio(url);
-  playingAudio.play();
-  playingAudio.onended = () => { URL.revokeObjectURL(url); playingAudio = null; };
-}
 
-// --- Library browser ---
-function browseLibrary(wpIndex, set, track) {
-  currentLibTarget = { wpIndex, set, track };
-  const input = document.getElementById('lib-file');
-  input.onchange = async function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    try {
-      const zip = await JSZip.loadAsync(file);
-      const cartridgeFile = zip.file('cartridge.py');
-      if (!cartridgeFile) { alert('No cartridge.py found'); return; }
-      const text = await cartridgeFile.async('text');
-      const libWaypoints = extractPythonValueForLib(text, 'WAYPOINTS') || [];
+  const ctx = ensureTrackCtx();
+  const arrayBuf = await blob.arrayBuffer();
+  const audioBuf = await ctx.decodeAudioData(arrayBuf);
 
-      let html = '<p style="color:#888;font-size:.85em;margin-bottom:12px">Select a track to import:</p>';
+  const offset = startOffset || 0;
+  trackPlaySource = ctx.createBufferSource();
+  trackPlaySource.buffer = audioBuf;
+  trackPlaySource.connect(ctx.destination);
+  trackPlaySource.start(0, offset);
 
-      for (let i = 0; i < libWaypoints.length; i++) {
-        const lw = libWaypoints[i];
-        html += `<div class="lib-wp-item"><strong>${lw.name || lw.id}</strong></div>`;
-        for (const setType of ['on', 'off']) {
-          const tracks = setType === 'on' ? lw.tracks_on : lw.tracks_off;
-          if (!tracks) continue;
-          for (const [ttype, tpath] of Object.entries(tracks)) {
-            if (!tpath) continue;
-            html += `<div class="lib-track-item" onclick="importFromLib(this)" data-path="${tpath}" data-set="${setType}" data-track="${ttype}">
-              <span style="color:#5cb85c">${setType.toUpperCase()}</span>
-              <span style="color:#f0ad4e;text-transform:uppercase">${ttype}</span>
-              <span style="flex:1;color:#aaa">${tpath}</span>
-            </div>`;
-          }
-        }
-      }
+  trackPlayingId = canvasId;
+  trackPlayStartTime = ctx.currentTime;
+  trackPlayOffset = offset;
+  trackPlayDuration = audioBuf.duration;
 
-      document.getElementById('lib-body').innerHTML = html;
-      document.getElementById('lib-overlay').style.display = 'block';
-      document.getElementById('lib-panel').style.display = 'block';
+  const btn = document.getElementById('tbtn-' + canvasId);
+  if (btn) btn.innerHTML = '&#9646;&#9646;';
 
-      // Store zip reference for import
-      window._libZip = zip;
-    } catch (e) {
-      alert('Error loading tour: ' + e.message);
-    }
-    input.value = '';
+  trackPlaySource.onended = () => {
+    if (trackPlayingId === canvasId) stopTrack();
   };
-  input.click();
+
+  // animate playhead
+  function animatePlayhead() {
+    if (trackPlayingId !== canvasId) return;
+    const elapsed = ctx.currentTime - trackPlayStartTime + trackPlayOffset;
+    const ratio = Math.min(1, elapsed / trackPlayDuration);
+    const ph = document.getElementById('ph-' + canvasId);
+    if (ph) ph.style.left = (ratio * 100) + '%';
+    trackPlayRAF = requestAnimationFrame(animatePlayhead);
+  }
+  animatePlayhead();
 }
 
-async function importFromLib(el) {
-  const path = el.dataset.path;
-  if (!window._libZip || !currentLibTarget) return;
+function seekTrack(event, wpIndex, set, track) {
+  const canvas = event.currentTarget.querySelector('canvas');
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const ratio = (event.clientX - rect.left) / rect.width;
 
-  const zipFile = window._libZip.file(path);
-  if (!zipFile) { alert('File not found in archive: ' + path); return; }
-
-  const blob = await zipFile.async('blob');
-  const { wpIndex, set, track } = currentLibTarget;
+  // get duration from metadata or estimate
   const wp = waypoints[wpIndex];
-  const key = `wp-${wpIndex}-${set}-${track}-lib-${path.split('/').pop()}`;
-  await storeBlob(key, blob);
+  const meta = wp._meta?.[`${activeAudioSet}/${track}`];
+  const dur = meta?.duration_s || 30;
 
-  const tracks = set === 'on' ? wp.tracks_on : wp.tracks_off;
-  tracks[track] = path;
-  if (!wp._blobKeys) wp._blobKeys = {};
-  wp._blobKeys[`${set}/${track}`] = key;
+  playTrack(wpIndex, set, track, ratio * dur);
+}
 
-  // Try to load sidecar JSON
-  const sidecarPath = path.replace(/\.[^.]+$/, '.json');
-  const sidecarFile = window._libZip.file(sidecarPath);
-  if (sidecarFile) {
+async function drawTrackWaveforms() {
+  // called after panel renders — draws waveforms for all tracks that have audio
+  const wp = waypoints[selectedWp];
+  if (!wp) return;
+  const set = activeAudioSet;
+  const trackTypes = ['atmo', 'sfx', 'dialogue', 'vo'];
+
+  for (const type of trackTypes) {
+    const canvasId = `wave-${selectedWp}-${set}-${type}`;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) continue;
+
+    const blobKey = wp._blobKeys?.[`${set}/${type}`];
+    if (!blobKey) continue;
+    const blob = await loadBlob(blobKey);
+    if (!blob) continue;
+
     try {
-      const sidecarText = await sidecarFile.async('text');
-      const sidecar = JSON.parse(sidecarText);
-      if (!wp._meta) wp._meta = {};
-      wp._meta[`${set}/${track}`] = sidecar;
-    } catch(e) {}
+      const ctx = ensureTrackCtx();
+      const arrayBuf = await blob.arrayBuffer();
+      const audioBuf = await ctx.decodeAudioData(arrayBuf);
+      drawMiniWaveform(canvas, audioBuf);
+    } catch(e) { /* skip undecodable */ }
   }
+}
 
-  saveMeta();
-  closeLibrary();
-  openWaypointPanel(wpIndex);
+function drawMiniWaveform(canvas, audioBuf) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const c = canvas.getContext('2d');
+  c.scale(dpr, dpr);
+  const w = rect.width, h = rect.height;
+
+  c.fillStyle = '#1a1a1a';
+  c.fillRect(0, 0, w, h);
+
+  const data = audioBuf.getChannelData(0);
+  const step = Math.max(1, Math.ceil(data.length / w));
+  const mid = h / 2;
+
+  c.strokeStyle = '#5cb85c';
+  c.lineWidth = 1;
+  c.beginPath();
+  for (let x = 0; x < w; x++) {
+    const idx = Math.floor(x * data.length / w);
+    let min = 1, max = -1;
+    for (let j = 0; j < step && idx + j < data.length; j++) {
+      const val = data[idx + j];
+      if (val < min) min = val;
+      if (val > max) max = val;
+    }
+    c.moveTo(x, mid + min * mid);
+    c.lineTo(x, mid + max * mid);
+  }
+  c.stroke();
+
+  // center line
+  c.strokeStyle = '#333';
+  c.lineWidth = 0.5;
+  c.beginPath(); c.moveTo(0, mid); c.lineTo(w, mid); c.stroke();
 }
 
 function closeLibrary() {
   document.getElementById('lib-overlay').style.display = 'none';
   document.getElementById('lib-panel').style.display = 'none';
-  window._libZip = null;
+}
+
+// --- Tour settings ---
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024; // 10MB
+
+function openSettings() {
+  document.getElementById('settings-name').value = tourTitle;
+  document.getElementById('settings-desc').value = tourDescription;
+  renderMediaGrid();
+  document.getElementById('settings-overlay').style.display = 'block';
+  document.getElementById('settings-panel').style.display = 'block';
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay').style.display = 'none';
+  document.getElementById('settings-panel').style.display = 'none';
+}
+
+function saveTourSettings() {
+  tourTitle = document.getElementById('settings-name').value.trim() || 'My Tour';
+  tourDescription = document.getElementById('settings-desc').value;
+  localStorage.setItem('pr-ed-title', tourTitle);
+  localStorage.setItem('pr-ed-desc', tourDescription);
+  document.getElementById('toolbarTitle').textContent = tourTitle;
+}
+
+function renderMediaGrid() {
+  const grid = document.getElementById('media-grid');
+  const sizeEl = document.getElementById('media-size');
+  const totalBytes = tourMedia.reduce((s, m) => s + (m.size || 0), 0);
+  sizeEl.textContent = (totalBytes / 1024 / 1024).toFixed(1) + ' / 10 MB used';
+
+  if (tourMedia.length === 0) {
+    grid.innerHTML = '<div style="color:#555;font-size:.8em">No media added.</div>';
+    return;
+  }
+
+  grid.innerHTML = tourMedia.map((m, i) => {
+    const isVideo = m.type && m.type.startsWith('video');
+    return `<div class="settings-media-item" id="media-${i}">
+      ${isVideo
+        ? `<video src="" id="media-src-${i}" muted></video>`
+        : `<img src="" id="media-src-${i}">`}
+      <button class="media-del" onclick="removeMedia(${i})">&times;</button>
+    </div>`;
+  }).join('');
+
+  // Load thumbnails from blobs
+  tourMedia.forEach(async (m, i) => {
+    const blob = await loadBlob(m.blobKey);
+    if (!blob) return;
+    const el = document.getElementById('media-src-' + i);
+    if (el) el.src = URL.createObjectURL(blob);
+  });
+}
+
+function addMedia() {
+  const totalBytes = tourMedia.reduce((s, m) => s + (m.size || 0), 0);
+  if (totalBytes >= MAX_MEDIA_BYTES) { alert('Media limit reached (10MB). Remove something first.'); return; }
+  document.getElementById('media-file').click();
+}
+
+async function handleMediaUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  event.target.value = '';
+
+  const totalBytes = tourMedia.reduce((s, m) => s + (m.size || 0), 0);
+  if (totalBytes + file.size > MAX_MEDIA_BYTES) {
+    alert('File too large. ' + ((MAX_MEDIA_BYTES - totalBytes) / 1024 / 1024).toFixed(1) + ' MB remaining.');
+    return;
+  }
+
+  const blobKey = 'tour-media-' + Date.now().toString(36) + '-' + file.name;
+  await storeBlob(blobKey, file);
+
+  tourMedia.push({ name: file.name, type: file.type, blobKey, size: file.size });
+  localStorage.setItem('pr-ed-media', JSON.stringify(tourMedia));
+  renderMediaGrid();
+}
+
+function removeMedia(index) {
+  const m = tourMedia[index];
+  if (m.blobKey) deleteBlob(m.blobKey);
+  tourMedia.splice(index, 1);
+  localStorage.setItem('pr-ed-media', JSON.stringify(tourMedia));
+  renderMediaGrid();
 }
 
 // --- Python parser (same as index.html) ---
@@ -702,8 +1084,10 @@ async function saveTour() {
   const tourDef = {
     id: tourTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'tour-' + Date.now().toString(36),
     title: tourTitle || 'Untitled Tour',
+    description: tourDescription || '',
     skin: 'default',
-    global_atmo: null
+    global_atmo: null,
+    media: tourMedia.map(m => 'media/' + m.name)
   };
 
   const contributors = Array.from(contributorSet);
@@ -765,6 +1149,19 @@ if __name__ == "__main__":
 
   zip.file('cartridge.py', cartridge);
 
+  // Add media files
+  for (const m of tourMedia) {
+    const blob = await loadBlob(m.blobKey);
+    if (blob) {
+      zip.file('media/' + m.name, blob);
+    }
+  }
+
+  // Add description as markdown file
+  if (tourDescription) {
+    zip.file('description.md', tourDescription);
+  }
+
   const manifest = {
     version: 1,
     tour_id: tourDef.id,
@@ -800,12 +1197,30 @@ async function handleOpen(event) {
     const loadedTour = extractPythonValueForLib(text, 'TOUR');
     if (loadedTour?.title) {
       tourTitle = loadedTour.title;
-      document.getElementById('tourTitle').value = tourTitle;
+      document.getElementById('toolbarTitle').textContent = tourTitle;
       localStorage.setItem('pr-ed-title', tourTitle);
     }
+    tourDescription = loadedTour?.description || '';
+    // try loading description.md
+    const descFile = zip.file('description.md');
+    if (descFile) tourDescription = await descFile.async('text');
+    localStorage.setItem('pr-ed-desc', tourDescription);
+
     const loadedWaypoints = extractPythonValueForLib(text, 'WAYPOINTS') || [];
 
     await clearBlobs();
+
+    // Load media files (after clearBlobs)
+    tourMedia = [];
+    const mediaFiles = Object.keys(zip.files).filter(f => f.startsWith('media/') && !zip.files[f].dir);
+    for (const mpath of mediaFiles) {
+      const blob = await zip.file(mpath).async('blob');
+      const fname = mpath.split('/').pop();
+      const blobKey = 'tour-media-' + Date.now().toString(36) + '-' + fname;
+      await storeBlob(blobKey, blob);
+      tourMedia.push({ name: fname, type: blob.type, blobKey, size: blob.size });
+    }
+    localStorage.setItem('pr-ed-media', JSON.stringify(tourMedia));
     waypoints = [];
 
     for (let i = 0; i < loadedWaypoints.length; i++) {
@@ -843,10 +1258,41 @@ async function handleOpen(event) {
     saveMeta();
     renderMap();
 
+    // Import all audio assets into the recorder library
+    let importedCount = 0;
+    for (const wp of waypoints) {
+      for (const setType of ['on', 'off']) {
+        const tracks = setType === 'on' ? wp.tracks_on : wp.tracks_off;
+        if (!tracks) continue;
+        for (const [ttype, tpath] of Object.entries(tracks)) {
+          if (!tpath) continue;
+          const blobKey = wp._blobKeys?.[`${setType}/${ttype}`];
+          if (!blobKey) continue;
+          const blob = await loadBlob(blobKey);
+          if (!blob) continue;
+          const meta = wp._meta?.[`${setType}/${ttype}`] || {};
+          const clipName = tpath.split('/').pop().replace(/\.[^.]+$/, '');
+          const clipId = 'tour-' + wp.id + '-' + setType + '-' + ttype;
+          await saveToRecorderDB({
+            id: clipId,
+            name: clipName,
+            tags: meta.tags || [ttype],
+            meta: { ...meta, source: meta.source || 'tour-import' },
+            wavBlob: blob,
+            saved_at: new Date().toISOString()
+          });
+          importedCount++;
+        }
+      }
+    }
+
     // Fit map to waypoints
     if (waypoints.length > 0) {
       const bounds = L.latLngBounds(waypoints.map(w => w.trigger.coords));
       map.fitBounds(bounds, { padding: [40, 40] });
+    }
+    if (importedCount > 0) {
+      console.log(`Imported ${importedCount} audio assets to recorder library`);
     }
   } catch (e) {
     alert('Error opening tour: ' + e.message);
