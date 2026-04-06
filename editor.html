@@ -63,6 +63,9 @@ select{width:100%;padding:10px;font-size:.95em;background:#222;border:1px solid 
 .track-playhead{position:absolute;top:0;bottom:0;width:2px;background:#5cb85c;pointer-events:none;left:0}
 .delete-section{margin-top:24px;padding-top:16px;border-top:1px solid #333;display:flex;gap:8px}
 .btn-amber-outline{background:transparent;border:2px solid #f0ad4e;color:#f0ad4e}
+.gps-btn{position:fixed;bottom:76px;right:12px;width:44px;height:44px;background:#1a1a1a;border:1px solid #333;border-radius:50%;z-index:1500;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px #0004}
+.gps-btn svg{width:22px;height:22px;fill:#888;transition:fill .15s}
+.gps-btn.has-fix svg{fill:#4a90d9}
 
 /* Library picker */
 .lib-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:3000}
@@ -96,12 +99,17 @@ select{width:100%;padding:10px;font-size:.95em;background:#222;border:1px solid 
 
 <div class="toolbar">
 <span id="toolbarTitle" style="color:#fff;font-weight:700;font-size:14px;margin-right:auto;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" onclick="openSettings()"></span>
+<button class="btn-red" onclick="newTour()">New</button>
 <button class="btn-blue" onclick="openTour()">Open</button>
 <button class="btn-green" onclick="saveTour()">Save</button>
 <button class="btn-dark" onclick="openSettings()">&#9881;</button>
 </div>
 
 <div id="map"></div>
+
+<button class="gps-btn" id="gps-btn" onclick="centerOnGps()" title="Center on my position">
+  <svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
+</button>
 
 <!-- Waypoint editor panel -->
 <div class="panel-overlay" id="panel-overlay" onclick="closePanel()"></div>
@@ -226,6 +234,31 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; OSM &copy; CARTO',
   subdomains: 'abcd', maxZoom: 20
 }).addTo(map);
+
+// --- GPS position ---
+let gpsMarker = null;
+let gpsCircle = null;
+if ('geolocation' in navigator) {
+  navigator.geolocation.watchPosition(function(pos) {
+    const latlng = [pos.coords.latitude, pos.coords.longitude];
+    const acc = pos.coords.accuracy;
+    if (gpsMarker) {
+      gpsMarker.setLatLng(latlng);
+      gpsCircle.setLatLng(latlng).setRadius(acc);
+    } else {
+      gpsCircle = L.circle(latlng, { radius: acc, color: '#4a90d9', fillColor: '#4a90d9', fillOpacity: 0.1, weight: 1 }).addTo(map);
+      gpsMarker = L.circleMarker(latlng, { radius: 6, color: '#fff', fillColor: '#4a90d9', fillOpacity: 1, weight: 2 }).addTo(map);
+      gpsMarker.setZIndexOffset(1000);
+      document.getElementById('gps-btn').classList.add('has-fix');
+    }
+  }, function() {}, { enableHighAccuracy: true, maximumAge: 5000 });
+}
+
+function centerOnGps() {
+  if (gpsMarker) {
+    map.setView(gpsMarker.getLatLng(), Math.max(map.getZoom(), 16));
+  }
+}
 
 map.on('click', function(e) {
   if (window._adjustMode) return; // handled by adjust handler
@@ -1021,6 +1054,20 @@ function extractPythonValueForLib(text, varName) {
 async function sha256hex(data) {
   const buf = await crypto.subtle.digest('SHA-256', typeof data === 'string' ? new TextEncoder().encode(data) : data);
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function newTour() {
+  if (!confirm('Start a new tour? All unsaved changes will be lost.')) return;
+  waypoints = [];
+  tourTitle = 'My Tour';
+  tourDescription = '';
+  tourMedia = [];
+  localStorage.removeItem(META_KEY);
+  localStorage.removeItem('pr-ed-title');
+  localStorage.removeItem('pr-ed-desc');
+  localStorage.removeItem('pr-ed-media');
+  document.getElementById('toolbarTitle').textContent = tourTitle;
+  renderMap();
 }
 
 async function saveTour() {
